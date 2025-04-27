@@ -31,6 +31,7 @@ import logging
 import os
 import uuid
 import requests
+import shutil # Added for file copying
 import json # For parsing mask metadata
 
 import cv2 # Used for PNG encoding/decoding
@@ -675,7 +676,7 @@ def api_generate_3d_model():
     # --- 4) Merge Mask Details onto Heightmap ---
     if saved_mask_files:
         logger.info(f"Merging details for {len(saved_mask_files)} masks...")
-        detail_scale = 0.8 # Scaling factor for checkerboard height
+        detail_scale = 50.0 # Scaling factor for checkerboard height
         checker_size = 8 # Size for checkerboard squares
 
         # Iterate through masks in the order defined by sorted keys
@@ -762,6 +763,8 @@ def api_generate_3d_model():
         color_reference_param = None
         output_filename = str(uuid.uuid4()) + ".stl"
     output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+    output_heightmap_filename = os.path.splitext(output_filename)[0] + "_heightmap.png"
+    output_heightmap_path = os.path.join(OUTPUT_FOLDER, output_heightmap_filename)
     logger.info(f"Preparing to generate {file_type.upper()} model. Output: {output_path}")
 
     # --- 7) Generate the 3D Model ---
@@ -796,22 +799,41 @@ def api_generate_3d_model():
         # TODO: Clean up uploaded/intermediate files
         return jsonify({"error": f"Error generating 3D model: {str(e)}"}), 500
 
-    # --- 8) Clean up temporary files ---
-    # files_to_remove list now contains all intermediate files
+    # --- 8) Copy final heightmap to output and Clean up temporary files ---
+    try:
+        logger.info(f"Copying final heightmap {heightmap_to_use} to {output_heightmap_path}")
+        shutil.copy2(heightmap_to_use, output_heightmap_path) # Use copy2 to preserve metadata if possible
+        # Now remove the original heightmap paths from the cleanup list if they exist
+        if heightmap_path in files_to_remove:
+            files_to_remove.remove(heightmap_path)
+            logger.debug(f"Removed base heightmap {heightmap_path} from cleanup list.")
+        if merged_heightmap_path and merged_heightmap_path in files_to_remove:
+            files_to_remove.remove(merged_heightmap_path)
+            logger.debug(f"Removed merged heightmap {merged_heightmap_path} from cleanup list.")
+    except Exception as e:
+        logger.error(f"Error copying final heightmap to output folder: {e}", exc_info=True)
+        # Proceed with cleanup, but the heightmap download might fail
+
+    # files_to_remove list now contains all intermediate files EXCEPT the final heightmap
     logger.info(f"Cleaning up {len(files_to_remove)} temporary files...")
     for f_path in files_to_remove:
         try:
             if f_path and os.path.exists(f_path):
                 os.remove(f_path)
-                logger.info(f"Cleaned up temporary file: {f_path}")
+                logger.debug(f"Cleaned up temporary file: {f_path}") # Changed to debug
         except OSError as e:
             logger.warning(f"Could not clean up temporary file {f_path}: {e}")
 
     # --- 9) Return Success Response ---
     # Construct the URL for the frontend to fetch the generated file
     file_url = request.host_url.rstrip('/') + "/outputs/" + output_filename
-    logger.info(f"Returning success response. File URL: {file_url}")
-    return jsonify({"fileUrl": file_url, "fileType": file_type})
+    heightmap_file_url = request.host_url.rstrip('/') + "/outputs/" + output_heightmap_filename
+    logger.info(f"Returning success response. Model URL: {file_url}, Heightmap URL: {heightmap_file_url}")
+    return jsonify({
+        "fileUrl": file_url,
+        "fileType": file_type,
+        "heightmapFileUrl": heightmap_file_url # Add the heightmap URL
+    })
 
 
 @app.route("/outputs/<path:filename>")

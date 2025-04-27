@@ -122,7 +122,7 @@ function ModelViewer({ fileUrl, fileType }: { fileUrl: string | null; fileType: 
       },
       (err) => { // onError callback
         console.error("Error loading model:", err);
-        setLoadingError(`Failed to load 3D model preview. Check console for details. Error: ${err.message || 'Unknown error'}`);
+        setLoadingError(`Failed to load 3D model preview. Check console for details. Error: ${(err as Error).message || 'Unknown error'}`);
       }
     );
 
@@ -297,6 +297,7 @@ function App() {
   // Result state
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [resultFileType, setResultFileType] = useState<string | null>(null);
+  const [heightmapUrl, setHeightmapUrl] = useState<string | null>(null); // NEW: State for heightmap download URL
 
   // UI Flow and Loading/Error state
   type Step = "input" | "masking" | "params" | "generating" | "result";
@@ -324,6 +325,7 @@ function App() {
     setSavedMasks([]);
     setResultUrl(null);
     setResultFileType(null);
+    setHeightmapUrl(null); // Clear heightmap URL
     setError(null);
     imageRef.current = null;
     setCurrentStep("input"); // Go back to input step
@@ -393,6 +395,7 @@ function App() {
     setSavedMasks([]);
     setResultUrl(null);
     setResultFileType(null);
+    setHeightmapUrl(null); // Clear heightmap URL
     setCurrentStep("generating"); // Indicate generation process
 
     try {
@@ -886,6 +889,8 @@ function App() {
       if (response.data && response.data.fileUrl && response.data.fileType) {
         setResultUrl(response.data.fileUrl);
         setResultFileType(response.data.fileType);
+        // NEW: Store the heightmap URL from the response
+        setHeightmapUrl(response.data.heightmapFileUrl || null); // Handle case where it might be missing
         setCurrentStep("result");
       } else {
         throw new Error(response.data?.error || "Invalid response received from model generation endpoint.");
@@ -1326,6 +1331,19 @@ function App() {
                     </svg>
                     Download Model ({resultFileType.toUpperCase()})
                   </a>
+                  {/* NEW: Add Heightmap Download Button */}
+                  {heightmapUrl && (
+                    <a
+                      href={heightmapUrl}
+                      download // Suggest download
+                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-offset-gray-800"
+                    >
+                      <svg className="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" /> {/* Simple image icon */}
+                      </svg>
+                      Download Heightmap (PNG)
+                    </a>
+                  )}
                   <button
                     onClick={resetForNewImage}
                     disabled={isLoading} // Disable if any loading is happening
