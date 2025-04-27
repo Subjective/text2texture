@@ -153,9 +153,42 @@ sam_hq_predictor: SamPredictor | None = None
 
 # --- Helper Functions ---
 
-# TODO:
-def merge_masks(main, secondary, ratio):
-    pass
+def generate_checkerboard_heightmap(mask_region: np.ndarray, checker_size: int = 8, height: float = 1.0) -> np.ndarray:
+    """
+    Generates a heightmap with a checkerboard pattern within the mask region.
+
+    Args:
+        mask_region: A 2D boolean numpy array where True indicates the region for the checkerboard.
+        checker_size: The size of each square in the checkerboard pattern.
+        height: The value to assign to the 'high' squares of the checkerboard.
+
+    Returns:
+        A 2D numpy array of the same shape as mask_region, with the checkerboard pattern
+        applied within the mask, and zeros elsewhere.
+    """
+    if mask_region.ndim != 2 or mask_region.dtype != bool:
+        raise ValueError("mask_region must be a 2D boolean numpy array.")
+
+    h, w = mask_region.shape
+    checkerboard = np.zeros((h, w), dtype=np.float32)
+
+    # Create the checkerboard pattern based on coordinates
+    # (i // checker_size) % 2 == (j // checker_size) % 2 determines the square color
+    for i in range(h):
+        for j in range(w):
+            if mask_region[i, j]: # Only apply within the mask
+                if (i // checker_size) % 2 == (j // checker_size) % 2:
+                    checkerboard[i, j] = height # Or 0, depending on starting corner preference
+                else:
+                    checkerboard[i, j] = 0 # Or height
+
+    # Alternative vectorized approach (potentially faster for large images)
+    # y_idx, x_idx = np.indices(mask_region.shape)
+    # checkerboard_pattern = ((y_idx // checker_size) % 2 == (x_idx // checker_size) % 2).astype(np.float32) * height
+    # checkerboard[mask_region] = checkerboard_pattern[mask_region]
+
+    return checkerboard
+
 
 # -- Image Decoding/Encoding --
 def decode_base64_image(base64_string: str) -> np.ndarray | None:
@@ -553,6 +586,9 @@ def api_generate_3d_model():
     color_image_filename = None
     saved_mask_files = {} # Dictionary to store paths to saved mask files { 'mask_0': path, ... }
     mask_metadata = [] # List to store metadata [{id:.., name:..}, ...]
+    heightmap_path = None # Path to the base heightmap
+    merged_heightmap_path = None # Path to the heightmap with details merged
+    files_to_remove = [] # Keep track of files for cleanup
 
     # --- 1) Handle Input Image (Upload) ---
     # Expecting 'color_image' file part from the frontend's FormData
@@ -563,11 +599,13 @@ def api_generate_3d_model():
     # Use a UUID to ensure unique filename in uploads folder
     color_image_filename = f"color_{str(uuid.uuid4())}_{color_image_file.filename}"
     color_image_path = os.path.join(UPLOAD_FOLDER, color_image_filename)
+    files_to_remove.append(color_image_path) # Add to cleanup list immediately
     try:
         color_image_file.save(color_image_path)
         logger.info(f"Saved uploaded color image to: {color_image_path}")
     except Exception as e:
         logger.error(f"Error saving uploaded color_image file: {str(e)}", exc_info=True)
+        # TODO: Cleanup already saved files before returning
         return jsonify({"error": f"Could not save uploaded file: {str(e)}"}), 500
 
     # --- 2) Handle Input Masks (Optional) ---
@@ -580,20 +618,20 @@ def api_generate_3d_model():
              if mask_file and mask_file.filename:
                  mask_filename = f"mask_{str(uuid.uuid4())}_{mask_file.filename}"
                  mask_path = os.path.join(UPLOAD_FOLDER, mask_filename)
+                 files_to_remove.append(mask_path) # Add to cleanup list
                  try:
                      mask_file.save(mask_path)
                      # Store the path using the original key ('mask_0', 'mask_1', etc.)
-                     # or just store the path if the key itself isn't needed later
                      saved_mask_files[key] = mask_path
                      logger.info(f"Saved uploaded mask '{key}' to: {mask_path}")
                  except Exception as e:
                      logger.error(f"Error saving uploaded mask file '{key}': {str(e)}", exc_info=True)
-                     # Decide whether to fail or continue without this mask
-                     # For now, let's return an error
                      # TODO: Clean up already saved files (color image, other masks)
                      return jsonify({"error": f"Could not save mask file '{key}': {str(e)}"}), 500
 
     # Get mask metadata (e.g., names, IDs) sent as JSON string in form data
+    # Ensure metadata aligns with saved_mask_files if possible (e.g., sort keys)
+    mask_keys_sorted = sorted(saved_mask_files.keys()) # e.g., ['mask_0', 'mask_1', ...]
     if "mask_metadata" in request.form:
         try:
             mask_metadata = json.loads(request.form["mask_metadata"])
@@ -610,20 +648,95 @@ def api_generate_3d_model():
 
     # --- 3) Generate Heightmap (from color image) ---
     # Create a unique filename for the heightmap
-    unique_heightmap_filename = f"depth_{str(uuid.uuid4())}.png"
-    heightmap_path = os.path.join(UPLOAD_FOLDER, unique_heightmap_filename)
+    unique_base_heightmap_filename = f"base_depth_{str(uuid.uuid4())}.png"
+    heightmap_path = os.path.join(UPLOAD_FOLDER, unique_base_heightmap_filename)
+    files_to_remove.append(heightmap_path) # Add base heightmap to cleanup
 
-    logger.info(f"Generating heightmap for {color_image_path} -> {heightmap_path}")
+    logger.info(f"Generating base heightmap for {color_image_path} -> {heightmap_path}")
     try:
         # Call the depth generation function (e.g., using ZoeDepth)
         get_grayscale_depth(color_image_path, heightmap_path)
-        logger.info(f"Successfully generated heightmap: {heightmap_path}")
-    except Exception as e:
-        logger.error(f"Error generating heightmap for {color_image_path}: {str(e)}", exc_info=True)
-        # TODO: Clean up uploaded color image and masks if heightmap fails
-        return jsonify({"error": f"Error generating heightmap: {str(e)}"}), 500
+        logger.info(f"Successfully generated base heightmap: {heightmap_path}")
+        # Load the base heightmap
+        base_heightmap_np = cv2.imread(heightmap_path, cv2.IMREAD_GRAYSCALE)
+        if base_heightmap_np is None:
+            raise ValueError(f"Failed to load generated base heightmap from {heightmap_path}")
+        # Normalize base heightmap (optional, depends on generate_depth output)
+        # base_heightmap_np = base_heightmap_np.astype(np.float32) / 255.0
+        base_heightmap_np = base_heightmap_np.astype(np.float32) # Ensure float for merging
+        final_heightmap_np = base_heightmap_np.copy() # Start final map with base
+        logger.info(f"Base heightmap loaded, shape: {base_heightmap_np.shape}")
 
-    # --- 4) Retrieve 3D Model Parameters ---
+    except Exception as e:
+        logger.error(f"Error generating or loading base heightmap for {color_image_path}: {str(e)}", exc_info=True)
+        # TODO: Clean up uploaded files
+        return jsonify({"error": f"Error generating base heightmap: {str(e)}"}), 500
+
+    # --- 4) Merge Mask Details onto Heightmap ---
+    if saved_mask_files:
+        logger.info(f"Merging details for {len(saved_mask_files)} masks...")
+        detail_scale = 0.8 # Scaling factor for checkerboard height
+        checker_size = 8 # Size for checkerboard squares
+
+        # Iterate through masks in the order defined by sorted keys
+        for mask_key in mask_keys_sorted:
+            mask_path = saved_mask_files[mask_key]
+            try:
+                # Load the mask (assuming it's a single channel PNG where non-zero is the mask)
+                mask_img = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+                if mask_img is None:
+                    logger.warning(f"Could not load mask file {mask_path}, skipping detail.")
+                    continue
+                # Ensure mask is boolean and matches heightmap shape
+                if mask_img.shape != final_heightmap_np.shape:
+                     logger.warning(f"Mask {mask_path} shape {mask_img.shape} mismatch with heightmap {final_heightmap_np.shape}, resizing mask...")
+                     mask_img = cv2.resize(mask_img, (final_heightmap_np.shape[1], final_heightmap_np.shape[0]), interpolation=cv2.INTER_NEAREST)
+
+                current_mask_bool = mask_img.astype(bool)
+
+                # Generate checkerboard detail for this mask
+                checkerboard_detail_np = generate_checkerboard_heightmap(
+                    current_mask_bool,
+                    checker_size=checker_size,
+                    height=1.0 # Generate checkerboard with height 1, scale later
+                )
+
+                # Add scaled detail to the final heightmap within the mask region
+                final_heightmap_np[current_mask_bool] += detail_scale * checkerboard_detail_np[current_mask_bool]
+                logger.debug(f"Applied checkerboard detail for mask {mask_key}")
+
+            except Exception as e:
+                logger.error(f"Error processing mask {mask_path} for detail merging: {e}", exc_info=True)
+                # Decide whether to continue or fail
+                # return jsonify({"error": f"Error processing mask {mask_key}: {e}"}), 500
+
+        # Normalize the final heightmap (optional, but good practice if values might exceed range)
+        min_h, max_h = np.min(final_heightmap_np), np.max(final_heightmap_np)
+        if max_h > min_h:
+             final_heightmap_np = (final_heightmap_np - min_h) / (max_h - min_h)
+        # Convert back to uint8 if needed by the 3D generation library, otherwise keep float
+        # final_heightmap_np = (final_heightmap_np * 255).astype(np.uint8)
+
+        # Save the final merged heightmap
+        merged_heightmap_filename = f"merged_depth_{str(uuid.uuid4())}.png"
+        merged_heightmap_path = os.path.join(UPLOAD_FOLDER, merged_heightmap_filename)
+        files_to_remove.append(merged_heightmap_path) # Add merged map to cleanup
+        try:
+            # Save as float image if possible (e.g., TIFF) or scale to uint8 PNG
+            # Saving as uint8 PNG for compatibility
+            final_heightmap_uint8 = (final_heightmap_np * 255).clip(0, 255).astype(np.uint8)
+            cv2.imwrite(merged_heightmap_path, final_heightmap_uint8)
+            logger.info(f"Saved final merged heightmap to: {merged_heightmap_path}")
+            heightmap_to_use = merged_heightmap_path # Use this path for 3D generation
+        except Exception as e:
+             logger.error(f"Error saving merged heightmap: {e}", exc_info=True)
+             # TODO: Cleanup
+             return jsonify({"error": f"Error saving merged heightmap: {e}"}), 500
+    else:
+        logger.info("No masks provided, using base heightmap for 3D generation.")
+        heightmap_to_use = heightmap_path # Use the original base heightmap path
+
+    # --- 5) Retrieve 3D Model Parameters ---
     try:
         block_width = float(request.form.get("block_width", 100))
         block_length = float(request.form.get("block_length", 100))
@@ -639,7 +752,7 @@ def api_generate_3d_model():
         # TODO: Clean up uploaded files
         return jsonify({"error": "Invalid 3D parameter values"}), 400
 
-    # --- 5) Set Output File Type and Path ---
+    # --- 6) Set Output File Type and Path ---
     if include_color:
         file_type = "ply"
         color_reference_param = color_image_path # Use the path of the uploaded color image
@@ -651,13 +764,11 @@ def api_generate_3d_model():
     output_path = os.path.join(OUTPUT_FOLDER, output_filename)
     logger.info(f"Preparing to generate {file_type.upper()} model. Output: {output_path}")
 
-    # --- 6) Generate the 3D Model ---
+    # --- 7) Generate the 3D Model ---
     try:
-        # ** IMPORTANT: The `generate_block_from_heightmap` function needs to be modified **
-        # ** in its own file (`heightmap_to_3d.py`) to accept and utilize mask data. **
-        # ** The following call passes the mask paths, but the function must use them. **
+        logger.info(f"Generating 3D model using heightmap: {heightmap_to_use}")
         generate_block_from_heightmap(
-            heightmap_path=heightmap_path,
+            heightmap_path=heightmap_to_use, # Use the final (potentially merged) heightmap
             output_path=output_path,
             block_width=block_width,
             block_length=block_length,
@@ -667,10 +778,6 @@ def api_generate_3d_model():
             mode=mode,
             invert=invert,
             color_reference=color_reference_param,
-            # TODO: If mask is not included, auto generate them
-            # --- Pass Mask Data (Requires library modification) ---
-            # mask_paths=list(saved_mask_files.values()), # Pass list of mask file paths
-            # mask_metadata=mask_metadata # Pass associated metadata
             # --------------------------------------------------------
         )
         logger.info(f"Successfully generated 3D model: {output_path}")
@@ -689,9 +796,9 @@ def api_generate_3d_model():
         # TODO: Clean up uploaded/intermediate files
         return jsonify({"error": f"Error generating 3D model: {str(e)}"}), 500
 
-    # --- 7) Clean up temporary files (optional) ---
-    # Keep files for debugging or remove them
-    files_to_remove = [color_image_path, heightmap_path] + list(saved_mask_files.values())
+    # --- 8) Clean up temporary files ---
+    # files_to_remove list now contains all intermediate files
+    logger.info(f"Cleaning up {len(files_to_remove)} temporary files...")
     for f_path in files_to_remove:
         try:
             if f_path and os.path.exists(f_path):
@@ -700,7 +807,7 @@ def api_generate_3d_model():
         except OSError as e:
             logger.warning(f"Could not clean up temporary file {f_path}: {e}")
 
-    # --- 8) Return Success Response ---
+    # --- 9) Return Success Response ---
     # Construct the URL for the frontend to fetch the generated file
     file_url = request.host_url.rstrip('/') + "/outputs/" + output_filename
     logger.info(f"Returning success response. File URL: {file_url}")
@@ -715,26 +822,38 @@ def serve_output(filename):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    logger.info("Starting Flask backend...")
-
-    # Load SAM2 model (for point prediction) on startup
-    if not load_sam2_model():
-        logger.warning("Failed to load SAM2 model. Point-based mask prediction endpoint will not work.")
-        # Decide if the app should exit or run without the model
-        # exit(1) # Uncomment to exit if SAM2 loading fails
-
-    # Load Autolabel models (Florence-2 + SAM-HQ) on startup
-    load_autolabel_models() # This function logs errors internally
-    if not all([florence_model, florence_processor, sam_hq_predictor]):
-         logger.warning("One or more auto-labeling models failed to load. Automatic mask generation endpoint will not work.")
-         # Decide if the app should exit or run without these models
-
-    # Start Flask development server
-    # Use debug=False in production.
-    # Determine host and port from environment variables or defaults
-    host = os.getenv("FLASK_HOST", "127.0.0.1") # Default to loopback address
+    # Determine host, port, and debug mode first
+    host = os.getenv("FLASK_HOST", "127.0.0.1") # Default to 127.0.0.1 (localhost)
     port = int(os.getenv("FLASK_PORT", 5000)) # Default to 5000
     debug_mode = os.getenv("FLASK_DEBUG", "True").lower() in ["true", "1", "yes"]
+
+    # Check if we are in the reloader's main process (child process)
+    # Only load models in the actual worker process to avoid double loading
+    # WERKZEUG_RUN_MAIN is set by Flask/Werkzeug when using the reloader
+    is_reloader_main_process = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+
+    if not debug_mode or is_reloader_main_process:
+        logger.info("Loading models...")
+        # Load SAM2 model (for point prediction)
+        if not load_sam2_model():
+            logger.warning("Failed to load SAM2 model. Point-based mask prediction endpoint will not work.")
+            # Decide if the app should exit or run without the model
+            # exit(1) # Uncomment to exit if SAM2 loading fails
+
+        # Load Autolabel models (Florence-2 + SAM-HQ)
+        load_autolabel_models() # This function logs errors internally
+        if not all([florence_model, florence_processor, sam_hq_predictor]):
+             logger.warning("One or more auto-labeling models failed to load. Automatic mask generation endpoint will not work.")
+             # Decide if the app should exit or run without these models
+        logger.info("Model loading complete (or attempted).")
+    else:
+        logger.info("Skipping model loading in Flask reloader parent process.")
+
+
+    # Start Flask development server
+    # The app.run() call needs to happen regardless of the process type
+    # for the reloader mechanism to function correctly.
     logger.info(f"Starting Flask server on {host}:{port} (Debug: {debug_mode})...")
+    # Let app.run handle the reloader based on debug_mode; don't set use_reloader=False
     app.run(host=host, port=port, debug=debug_mode)
     logger.info("Flask backend stopped.")
