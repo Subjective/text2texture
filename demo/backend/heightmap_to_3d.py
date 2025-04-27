@@ -115,7 +115,8 @@ def generate_block_from_heightmap(
     for y in range(height_px):
         for x in range(width_px):
             X_real = (x / (width_px - 1)) * block_width
-            Y_real = (y / (height_px - 1)) * block_length
+            Y_real = ((height_px - 1 - y) / (height_px - 1)) * block_length
+            # Y_real = (y / (height_px - 1)) * block_length
             # Adjust top Z coordinate based on the selected mode.
             z_top = modify_top_z(base_top, pixels[y, x], depth, mode)
             idx = vertex_index(x, y, is_top=True)
@@ -128,7 +129,8 @@ def generate_block_from_heightmap(
     for y in range(height_px):
         for x in range(width_px):
             X_real = (x / (width_px - 1)) * block_width
-            Y_real = (y / (height_px - 1)) * block_length
+            Y_real = ((height_px - 1 - y) / (height_px - 1)) * block_length
+            # Y_real = (y / (height_px - 1)) * block_length
             z_bottom = base_height
             idx = vertex_index(x, y, is_top=False)
             vertices[idx] = [X_real, Y_real, z_bottom]
@@ -148,7 +150,8 @@ def generate_block_from_heightmap(
             v2_top = vertex_index(x + 1, y,     True)
             v3_top = vertex_index(x + 1, y + 1, True)
             v4_top = vertex_index(x,     y + 1, True)
-            add_square(v1_top, v2_top, v3_top, v4_top)
+            # Pass vertices in opposite order to flip the face normals
+            add_square(v1_top, v4_top, v3_top, v2_top)
 
             # Bottom face (reverse winding for outward normals)
             v1_bot = vertex_index(x,     y,     False)
