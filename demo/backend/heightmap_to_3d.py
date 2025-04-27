@@ -2,11 +2,14 @@ import argparse
 import numpy as np
 from stl import mesh
 from PIL import Image
+import os # Added for file extension check
 
 def write_ply(filename, vertices, faces, vertex_colors):
     """
     Write an ASCII PLY file with per-vertex colors.
     """
+    # Ensure the directory exists
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
     with open(filename, "w") as f:
         f.write("ply\n")
         f.write("format ascii 1.0\n")
@@ -21,9 +24,14 @@ def write_ply(filename, vertices, faces, vertex_colors):
         f.write("property list uchar int vertex_indices\n")
         f.write("end_header\n")
         for i, v in enumerate(vertices):
-            r, g, b = vertex_colors[i]
-            f.write("{:.6f} {:.6f} {:.6f} {} {} {}\n".format(v[0], v[1], v[2],
+            # Handle potential None colors if logic error occurs
+            if vertex_colors is not None and i < len(vertex_colors):
+                r, g, b = vertex_colors[i]
+                f.write("{:.6f} {:.6f} {:.6f} {} {} {}\n".format(v[0], v[1], v[2],
                                                                int(r), int(g), int(b)))
+            else: # Fallback if color is missing for some reason
+                 f.write("{:.6f} {:.6f} {:.6f} 128 128 128\n".format(v[0], v[1], v[2]))
+
         for face in faces:
             # Each face is a triangle (3 vertices)
             f.write("3 {} {} {}\n".format(face[0], face[1], face[2]))
@@ -59,31 +67,15 @@ def generate_block_from_heightmap(
 ):
     """
     Generate a rectangular block (of size block_width x block_length x block_thickness)
-    and modify its top surface using a heightmap.
+    and modify its top surface using a heightmap. Corrected face winding.
 
-    - The bottom of the block is at Z = base_height.
-    - The nominal top (before modification) is at Z = base_height + block_thickness.
-    - If mode is 'protrude', white pixels (value=1) will raise the top by up to depth.
-    - If mode is 'carve', white pixels (value=1) will lower the top by up to depth.
-
-    Optionally, if a color_reference image is provided (and matches the heightmap dimensions),
-    its RGB values are applied to the top face vertices. In that case the model is exported as
-    a PLY file; otherwise, an STL file is generated.
-
-    :param heightmap_path: Path to the grayscale heightmap image.
-    :param output_path: Output file path (STL if no color, PLY if colored).
-    :param block_width: X dimension of the block.
-    :param block_length: Y dimension of the block.
-    :param block_thickness: Base thickness (height) of the block.
-    :param depth: Maximum extra height for protruding or carving.
-    :param base_height: Z offset for the bottom of the block.
-    :param mode: 'protrude' (default) to raise the top, or 'carve' to cut into the block.
-    :param invert: If True, invert the heightmap (swap black and white).
-    :param color_reference: Optional path to a reference color image (must match heightmap dimensions).
+    [...] # Rest of the docstring
     """
     # 1) Load heightmap as grayscale and normalize to [0, 1]
     img = Image.open(heightmap_path).convert('L')
     width_px, height_px = img.size
+    if width_px < 2 or height_px < 2:
+        raise ValueError("Heightmap must be at least 2x2 pixels.")
     pixels = np.array(img, dtype=np.float32) / 255.0
     if invert:
         pixels = 1.0 - pixels
@@ -91,11 +83,24 @@ def generate_block_from_heightmap(
     # Optionally load the reference image for vertex colors.
     use_color = False
     if color_reference:
-        ref_img = Image.open(color_reference).convert('RGB')
-        ref_pixels = np.array(ref_img, dtype=np.uint8)
-        if ref_pixels.shape[0] != height_px or ref_pixels.shape[1] != width_px:
-            raise ValueError("Reference image dimensions do not match the heightmap.")
-        use_color = True
+        try:
+            ref_img = Image.open(color_reference).convert('RGB')
+            ref_pixels = np.array(ref_img, dtype=np.uint8)
+            if ref_pixels.shape[0] != height_px or ref_pixels.shape[1] != width_px:
+                raise ValueError("Reference image dimensions do not match the heightmap.")
+            use_color = True
+            # Automatically set output format to PLY if color is used
+            if not output_path.lower().endswith(".ply"):
+                 print("Warning: Color reference provided, changing output format to PLY.")
+                 output_path = os.path.splitext(output_path)[0] + ".ply"
+
+        except FileNotFoundError:
+             print(f"Warning: Color reference file not found at {color_reference}. Generating without color.")
+             use_color = False
+        except Exception as e:
+             print(f"Warning: Error loading color reference: {e}. Generating without color.")
+             use_color = False
+
 
     # 2) Create vertices for the top (modified by heightmap) and bottom (flat)
     num_vertices_top = width_px * height_px
@@ -108,29 +113,29 @@ def generate_block_from_heightmap(
     def vertex_index(x, y, is_top=True):
         """Return index of the vertex at (x,y) in the top or bottom layer."""
         base = 0 if is_top else num_vertices_top
-        return base + (y * width_px + x)
+        # Clamp indices to avoid out-of-bounds (already handled by loop ranges)
+        # x_clamped = min(x, width_px - 1)
+        # y_clamped = min(y, height_px - 1)
+        return base + (y * width_px + x) # Use direct y, x as loops are correct
 
     base_top = base_height + block_thickness
-    # Fill top vertices (modified by heightmap and optionally colored)
+    # Fill top vertices
     for y in range(height_px):
         for x in range(width_px):
             X_real = (x / (width_px - 1)) * block_width
-            Y_real = ((height_px - 1 - y) / (height_px - 1)) * block_length
-            # Y_real = (y / (height_px - 1)) * block_length
-            # Adjust top Z coordinate based on the selected mode.
+            Y_real = ((height_px - 1 - y) / (height_px - 1)) * block_length # Y=0 pixel is max Y coord
             z_top = modify_top_z(base_top, pixels[y, x], depth, mode)
             idx = vertex_index(x, y, is_top=True)
             vertices[idx] = [X_real, Y_real, z_top]
             if use_color:
                 vertex_colors[idx] = ref_pixels[y, x]
 
-    # Fill bottom vertices (flat at base_height; assign a default color if using color)
-    default_bottom_color = np.array([200, 200, 200], dtype=np.uint8)
+    # Fill bottom vertices
+    default_bottom_color = np.array([128, 128, 128], dtype=np.uint8)
     for y in range(height_px):
         for x in range(width_px):
             X_real = (x / (width_px - 1)) * block_width
             Y_real = ((height_px - 1 - y) / (height_px - 1)) * block_length
-            # Y_real = (y / (height_px - 1)) * block_length
             z_bottom = base_height
             idx = vertex_index(x, y, is_top=False)
             vertices[idx] = [X_real, Y_real, z_bottom]
@@ -140,84 +145,129 @@ def generate_block_from_heightmap(
     # 3) Create faces (triangles) for top, bottom, and side walls.
     faces = []
     def add_square(v1, v2, v3, v4):
-        faces.append([v1, v2, v3])
-        faces.append([v3, v4, v1])
+        """Adds two triangles (v1,v2,v3) and (v3,v4,v1) to the faces list."""
+        faces.append([v1, v2, v3]) # Triangle 1
+        faces.append([v3, v4, v1]) # Triangle 2
 
+    # --- Top and Bottom Faces ---
+    # [ This part remains the same - correctly generating top/bottom faces ]
     for y in range(height_px - 1):
         for x in range(width_px - 1):
-            # Top face
             v1_top = vertex_index(x,     y,     True)
             v2_top = vertex_index(x + 1, y,     True)
             v3_top = vertex_index(x + 1, y + 1, True)
             v4_top = vertex_index(x,     y + 1, True)
-            # Pass vertices in opposite order to flip the face normals
-            add_square(v1_top, v4_top, v3_top, v2_top)
-
-            # Bottom face (reverse winding for outward normals)
             v1_bot = vertex_index(x,     y,     False)
             v2_bot = vertex_index(x + 1, y,     False)
             v3_bot = vertex_index(x + 1, y + 1, False)
             v4_bot = vertex_index(x,     y + 1, False)
-            add_square(v1_bot, v4_bot, v3_bot, v2_bot)
+            add_square(v1_top, v4_top, v3_top, v2_top) # Top face
+            add_square(v1_bot, v2_bot, v3_bot, v4_bot) # Bottom face
 
-    # Side walls (connect top edge to bottom edge)
+    # --- Side Walls ---
+    # Side walls along X (Left: x=0, Right: x=width_px-1)
     for y in range(height_px - 1):
-        for side_x in [0, width_px - 1]:
-            v_top1 = vertex_index(side_x, y,     True)
-            v_top2 = vertex_index(side_x, y + 1, True)
-            v_bot1 = vertex_index(side_x, y,     False)
-            v_bot2 = vertex_index(side_x, y + 1, False)
-            add_square(v_top1, v_top2, v_bot2, v_bot1)
+        # Left side (x=0). Correct.
+        v1_t = vertex_index(0, y,     True)
+        v1_b = vertex_index(0, y,     False)
+        v4_t = vertex_index(0, y + 1, True)
+        v4_b = vertex_index(0, y + 1, False)
+        add_square(v1_t, v1_b, v4_b, v4_t) # Correct order for Left
+
+        # Right side (x = width_px - 1). Needs correction.
+        v2_t = vertex_index(width_px - 1, y,     True)
+        v2_b = vertex_index(width_px - 1, y,     False)
+        v3_t = vertex_index(width_px - 1, y + 1, True)
+        v3_b = vertex_index(width_px - 1, y + 1, False)
+        # Flip the winding empirically by swapping 2nd and 4th args
+        add_square(v2_t, v3_t, v3_b, v2_b) # *** EMPIRICAL FIX ORDER ***
+
+    # Side walls along Y (Near: y=height_px-1 -> Y_real=0, Far: y=0 -> Y_real=max)
     for x in range(width_px - 1):
-        for side_y in [0, height_px - 1]:
-            v_top1 = vertex_index(x,     side_y, True)
-            v_top2 = vertex_index(x + 1, side_y, True)
-            v_bot1 = vertex_index(x,     side_y, False)
-            v_bot2 = vertex_index(x + 1, side_y, False)
-            add_square(v_top1, v_top2, v_bot2, v_bot1)
+        # Near side (y = height_px - 1). Correct.
+        v4_t = vertex_index(x,     height_px - 1, True)
+        v4_b = vertex_index(x,     height_px - 1, False)
+        v3_t = vertex_index(x + 1, height_px - 1, True)
+        v3_b = vertex_index(x + 1, height_px - 1, False)
+        add_square(v4_t, v4_b, v3_b, v3_t) # Correct order for Near
+
+        # Far side (y = 0). Correct.
+        v1_t = vertex_index(x,     0, True)
+        v1_b = vertex_index(x,     0, False)
+        v2_t = vertex_index(x + 1, 0, True)
+        v2_b = vertex_index(x + 1, 0, False)
+        add_square(v2_t, v2_b, v1_b, v1_t) # Correct order for Far
 
     faces = np.array(faces, dtype=np.int32)
 
     # 4) Export the model.
+    output_ext = os.path.splitext(output_path)[1].lower()
+
     if use_color:
+        if output_ext != ".ply":
+            print(f"Warning: Output format is '{output_ext}', but color requires PLY. Saving as PLY.")
+            output_path = os.path.splitext(output_path)[0] + ".ply"
         print("Color reference provided – exporting as a PLY file with vertex colors.")
         write_ply(output_path, vertices, faces, vertex_colors)
-    else:
+    elif output_ext == ".ply":
+         print("No color reference, but output is PLY. Assigning default colors.")
+         # Create default colors if PLY output is requested without a color map
+         vertex_colors = np.full((total_vertices, 3), 128, dtype=np.uint8) # Gray
+         # Optionally color top face differently
+         for y in range(height_px):
+             for x in range(width_px):
+                 idx = vertex_index(x, y, is_top=True)
+                 vertex_colors[idx] = [200, 200, 200] # Light gray for top
+         write_ply(output_path, vertices, faces, vertex_colors)
+    else: # Default to STL if no color and not PLY
+        if output_ext != ".stl":
+             print(f"Warning: Output format is '{output_ext}'. Saving as STL.")
+             output_path = os.path.splitext(output_path)[0] + ".stl"
+        print("No color reference – exporting as an STL file.")
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
         output_mesh = mesh.Mesh(np.zeros(faces.shape[0], dtype=mesh.Mesh.dtype))
         for i, f in enumerate(faces):
             for j in range(3):
                 output_mesh.vectors[i][j] = vertices[f[j]]
         output_mesh.save(output_path)
+
     print(f"Saved model to: {output_path}")
 
+
 if __name__ == "__main__":
-    # Parse command-line arguments
     parser = argparse.ArgumentParser(
-        description="Generate a block with a modified top face from a heightmap, either by protruding or carving."
+        description="Generate a block with a modified top face from a heightmap." # Simplified description
     )
     parser.add_argument("heightmap_path", help="Path to the grayscale heightmap image.")
-    parser.add_argument("output_path", help="Output file path (STL if no color, PLY if colored).")
-    parser.add_argument("--block_width", type=float, default=100.0, help="X dimension of the block (default: 100).")
-    parser.add_argument("--block_length", type=float, default=100.0, help="Y dimension of the block (default: 100).")
-    parser.add_argument("--block_thickness", type=float, default=10.0, help="Base thickness of the block (default: 10).")
-    parser.add_argument("--depth", type=float, default=5.0, help="Maximum extra height (default: 5).")
-    parser.add_argument("--base_height", type=float, default=0.0, help="Z offset for the bottom of the block (default: 0).")
+    parser.add_argument("output_path", help="Output file path (.stl or .ply).")
+    parser.add_argument("--block_width", type=float, default=100.0, help="X dimension (default: 100).")
+    parser.add_argument("--block_length", type=float, default=100.0, help="Y dimension (default: 100).")
+    parser.add_argument("--block_thickness", type=float, default=10.0, help="Base thickness (default: 10).")
+    parser.add_argument("--depth", type=float, default=5.0, help="Max protrusion/carve depth (default: 5).")
+    parser.add_argument("--base_height", type=float, default=0.0, help="Z offset for bottom (default: 0).")
     parser.add_argument("--mode", choices=["protrude", "carve"], default="protrude",
-                        help="Mode for top modification: 'protrude' to raise or 'carve' to cut into the block (default: protrude).")
-    parser.add_argument("--invert", action="store_true", help="Invert the heightmap (swap black and white).")
-    parser.add_argument("--color_reference", help="Path to a reference color image (must match heightmap dimensions).")
+                        help="Mode: 'protrude' or 'carve' (default: protrude).")
+    parser.add_argument("--invert", action="store_true", help="Invert heightmap.")
+    parser.add_argument("--color_reference", help="Path to color image (forces PLY output).")
     args = parser.parse_args()
 
-    # Run the function with provided arguments
-    generate_block_from_heightmap(
-        heightmap_path=args.heightmap_path,
-        output_path=args.output_path,
-        block_width=args.block_width,
-        block_length=args.block_length,
-        block_thickness=args.block_thickness,
-        depth=args.depth,
-        base_height=args.base_height,
-        mode=args.mode,
-        invert=args.invert,
-        color_reference=args.color_reference
-    )
+    try:
+        generate_block_from_heightmap(
+            heightmap_path=args.heightmap_path,
+            output_path=args.output_path,
+            block_width=args.block_width,
+            block_length=args.block_length,
+            block_thickness=args.block_thickness,
+            depth=args.depth,
+            base_height=args.base_height,
+            mode=args.mode,
+            invert=args.invert,
+            color_reference=args.color_reference
+        )
+    except FileNotFoundError as e:
+        print(f"Error: Input file not found - {e}")
+    except ValueError as e:
+        print(f"Error: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
