@@ -19,5 +19,11 @@ openai
 numpy-stl
 
 # ─── Vision / depth / segmentation ────────────────────────────────────────────
+segment-anything-hq
 git+https://github.com/facebookresearch/sam2.git
 timm==0.6.7  # vision backbones ZoeDepth relies on (see https://github.com/isl-org/ZoeDepth/issues/97)
+
+# ─── LLMS ─────────────────────────────────────────────────────────────────────
+transformers
+accelerate
+einops
