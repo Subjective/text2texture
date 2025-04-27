@@ -532,10 +532,22 @@ function App() {
   useEffect(() => {
     // Only draw if we are in a step where the canvas should be visible AND image is loaded
     if ((currentStep === 'masking' || currentStep === 'params') && imageSrc && canvasRef.current) {
-      drawCanvas();
+      // Use requestAnimationFrame to schedule the draw before the next browser repaint
+      let animationFrameId: number | null = null;
+      animationFrameId = requestAnimationFrame(() => {
+        drawCanvas();
+      });
+      // Cleanup function to cancel the frame if the component unmounts or dependencies change before it runs
+      return () => {
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+        }
+      };
     }
     // If step changes away from masking/params, canvas doesn't need redraw
-  }, [imageSrc, points, savedMasks, drawCanvas, currentStep]); // Add drawCanvas here
+    // Dependencies are correct: redraw when image, points, masks, draw function identity, or step changes.
+  }, [imageSrc, points, savedMasks, drawCanvas, currentStep]); // Keep dependencies as they are
+
 
   // Effect for handling canvas resizing
   useEffect(() => {
