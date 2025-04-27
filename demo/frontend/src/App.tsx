@@ -33,20 +33,30 @@ type SavedMask = {
 // --- Helper Functions ---
 // Helper to convert Base64 string to Blob (needed for FormData)
 const base64ToBlob = (base64: string, contentType = '', sliceSize = 512): Blob => {
-  const byteCharacters = atob(base64);
-  const byteArrays = [];
+  // Remove Data URI prefix if present
+  const base64Data = base64.includes(',') ? base64.split(',')[1] : base64;
+  try {
+    const byteCharacters = atob(base64Data);
+    const byteArrays = [];
 
-  for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
-    const slice = byteCharacters.slice(offset, offset + sliceSize);
-    const byteNumbers = new Array(slice.length);
-    for (let i = 0; i < slice.length; i++) {
-      byteNumbers[i] = slice.charCodeAt(i);
+    for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
+      const slice = byteCharacters.slice(offset, offset + sliceSize);
+      const byteNumbers = new Array(slice.length);
+      for (let i = 0; i < slice.length; i++) {
+        byteNumbers[i] = slice.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      byteArrays.push(byteArray);
     }
-    const byteArray = new Uint8Array(byteNumbers);
-    byteArrays.push(byteArray);
-  }
 
-  return new Blob(byteArrays, { type: contentType });
+    return new Blob(byteArrays, { type: contentType });
+  } catch (e) {
+    console.error("Error decoding base64 string:", e, base64.substring(0, 50) + "..."); // Log error and part of string
+    // Return an empty blob or re-throw? Returning empty blob might hide issues downstream.
+    // Let's re-throw or return null to indicate failure clearly.
+    throw new Error("Failed to decode base64 string.");
+    // return new Blob([], { type: contentType }); // Alternative: return empty blob
+  }
 };
 
 
@@ -76,13 +86,17 @@ function ModelViewer({ fileUrl, fileType }: { fileUrl: string | null; fileType: 
       return;
     }
 
+    console.log(`Loading ${fileType.toUpperCase()} model from: ${fileUrl}`); // Debug log
+
     loader.load(
       fileUrl,
       (geom) => {
+        console.log(`${fileType.toUpperCase()} model loaded successfully.`); // Debug log
         if (fileType.toLowerCase() === "ply") {
           // Ensure geometry is BufferGeometry and compute normals
           if ('computeVertexNormals' in geom) {
             geom.computeVertexNormals(); // Important for lighting on PLY
+            console.log("Computed vertex normals for PLY."); // Debug log
           } else {
             console.warn("Loaded PLY geometry does not have computeVertexNormals method.");
           }
@@ -90,19 +104,23 @@ function ModelViewer({ fileUrl, fileType }: { fileUrl: string | null; fileType: 
         // Center the geometry before setting state
         if ('center' in geom) {
           geom.center();
+          console.log("Centered geometry."); // Debug log
         }
         setGeometry(geom);
       },
-      undefined, // onProgress callback (optional)
+      (xhr) => { // onProgress callback
+        console.log(`Model loading progress: ${(xhr.loaded / xhr.total * 100).toFixed(2)}%`);
+      },
       (err) => { // onError callback
         console.error("Error loading model:", err);
-        setLoadingError("Failed to load 3D model preview.");
+        setLoadingError(`Failed to load 3D model preview. Check console for details. Error: ${err.message || 'Unknown error'}`);
       }
     );
 
     // Cleanup function (optional, loaders might not need explicit disposal)
     return () => {
-      // Potential cleanup if needed
+      console.log("Cleaning up ModelViewer for:", fileUrl); // Debug log
+      // Potential cleanup if needed, e.g., geometry.dispose() if applicable
     };
 
   }, [fileUrl, fileType]);
@@ -110,7 +128,7 @@ function ModelViewer({ fileUrl, fileType }: { fileUrl: string | null; fileType: 
   if (loadingError) {
     return (
       <div className="flex items-center justify-center h-full text-lg font-medium text-red-600 bg-red-50 dark:bg-gray-800 dark:text-red-400 p-4 rounded-md">
-        Error: {loadingError}
+        Error loading preview: {loadingError}
       </div>
     );
   }
@@ -118,7 +136,7 @@ function ModelViewer({ fileUrl, fileType }: { fileUrl: string | null; fileType: 
   if (!geometry) {
     return (
       <div className="flex items-center justify-center h-full text-lg font-medium text-gray-600 dark:text-gray-300">
-        Loading model preview...
+        Loading 3D model preview...
       </div>
     );
   }
@@ -126,9 +144,9 @@ function ModelViewer({ fileUrl, fileType }: { fileUrl: string | null; fileType: 
   return (
     <Canvas className="w-full h-full" camera={{ position: [150, 150, 150], fov: 50 }}> {/* Adjusted fov */}
       <ambientLight intensity={0.7} /> {/* Slightly increased ambient light */}
-      <directionalLight intensity={1.0} position={[50, 100, 150]} /> {/* Stronger main light */}
+      <directionalLight intensity={1.0} position={[50, 100, 150]} castShadow /> {/* Stronger main light */}
       <directionalLight intensity={0.5} position={[-80, -40, -100]} /> {/* Back/fill light */}
-      <mesh geometry={geometry} scale={1}> {/* Ensure scale is appropriate, geometry is centered */}
+      <mesh geometry={geometry} scale={1} castShadow receiveShadow> {/* Ensure scale is appropriate, geometry is centered */}
         {/* Primitive is used when geometry is loaded directly */}
         <primitive object={geometry} attach="geometry" />
         {fileType === "ply" && geometry.attributes.color ? (
@@ -139,8 +157,105 @@ function ModelViewer({ fileUrl, fileType }: { fileUrl: string | null; fileType: 
           <meshStandardMaterial color="#cccccc" roughness={0.6} metalness={0.2} />
         )}
       </mesh>
+      {/* Optional: Add a ground plane */}
+      {/* <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -geometry?.boundingBox?.min?.y || -50, 0]} receiveShadow>
+            <planeGeometry args={[500, 500]} />
+            <shadowMaterial opacity={0.3} />
+        </mesh> */}
       <OrbitControls />
     </Canvas>
+  );
+}
+
+// Component for individual mask list items
+interface MaskListItemProps {
+  mask: SavedMask;
+  index: number;
+  isLoading: boolean; // Combined loading state
+  onToggleActive: (id: string) => void;
+  onDelete: (id: string) => void;
+  onRename: (id: string, newName: string) => void; // Pass rename handler
+}
+
+function MaskListItem({ mask, index, isLoading, onToggleActive, onDelete, onRename }: MaskListItemProps) {
+  // Local state to manage the input field value during editing
+  const [editingName, setEditingName] = useState<string>(mask.name);
+
+  // Update local state if the mask name prop changes from outside (e.g., initial load)
+  useEffect(() => {
+    setEditingName(mask.name);
+  }, [mask.name]);
+
+  // Handle changes in the input field
+  const handleNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setEditingName(event.target.value); // Update local state only
+  };
+
+  // Handle saving the name when the input loses focus
+  const handleNameBlur = () => {
+    // Only call the parent rename function if the name actually changed
+    if (editingName !== mask.name) {
+      // Use default name if editingName is empty, otherwise use editingName
+      onRename(mask.id, editingName.trim() || `Mask ${index + 1}`);
+    }
+    // If the user clears the input and blurs, reset local state to the (potentially new default) prop name
+    if (!editingName.trim()) {
+      setEditingName(mask.name); // Reset local state to reflect the actual name in parent state
+    }
+  };
+
+  // Handle saving name on Enter key press
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      handleNameBlur(); // Trigger the same logic as blur
+      event.currentTarget.blur(); // Optionally remove focus
+    } else if (event.key === 'Escape') {
+      setEditingName(mask.name); // Revert changes on Escape
+      event.currentTarget.blur();
+    }
+  };
+
+
+  return (
+    <li className="flex items-center justify-between p-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700">
+      <input
+        type="text"
+        value={editingName} // Bind to local state
+        onChange={handleNameChange} // Update local state
+        onBlur={handleNameBlur} // Update parent state on blur
+        onKeyDown={handleKeyDown} // Handle Enter/Escape keys
+        className="text-sm text-gray-800 dark:text-gray-200 bg-transparent border-b border-gray-300 dark:border-gray-500 focus:outline-none focus:border-blue-500 mr-2 flex-grow"
+        placeholder={`Mask ${index + 1}`}
+        disabled={isLoading}
+        aria-label={`Mask name for mask ${index + 1}`}
+      />
+      <span className="text-xs text-gray-500 dark:text-gray-400 mr-2 flex-shrink-0">
+        (Score: {mask.score?.toFixed(2) ?? 'N/A'})
+      </span>
+      <div className="flex items-center space-x-3 flex-shrink-0">
+        <label className="flex items-center space-x-1 cursor-pointer" title="Toggle visibility/usage">
+          <input
+            type="checkbox"
+            checked={mask.isActive}
+            onChange={() => onToggleActive(mask.id)}
+            className="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"
+            disabled={isLoading}
+          />
+          <span className="text-xs text-gray-700 dark:text-gray-300">Use</span>
+        </label>
+        <button
+          onClick={() => onDelete(mask.id)}
+          title="Delete Mask"
+          className="text-red-500 hover:text-red-700 disabled:opacity-50"
+          disabled={isLoading}
+          aria-label={`Delete mask ${index + 1}`}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
+      </div>
+    </li>
   );
 }
 
@@ -155,15 +270,15 @@ function App() {
   const [textPrompt, setTextPrompt] = useState<string>(""); // Holds the text prompt
   const [imageSrc, setImageSrc] = useState<string | null>(null); // Base64 Data URL of the image for display/masking
 
-  // Masking state (from SAM2)
+  // Masking state
   const [points, setPoints] = useState<Point[]>([]); // Current points for next mask
   const [savedMasks, setSavedMasks] = useState<SavedMask[]>([]); // List of saved masks
 
-  // 3D Model parameters state (from heightmap_to_3d)
+  // 3D Model parameters state
   const [blockWidth, setBlockWidth] = useState<number>(100);
   const [blockLength, setBlockLength] = useState<number>(100);
   const [blockThickness, setBlockThickness] = useState<number>(10);
-  const [depth, setDepth] = useState<number>(25);
+  const [depth, setDepth] = useState<number>(25); // Max height/depth variation
   const [baseHeight, setBaseHeight] = useState<number>(0);
   const [mode, setMode] = useState<"protrude" | "carve">("protrude");
   const [invert, setInvert] = useState<boolean>(false);
@@ -183,29 +298,36 @@ function App() {
   // Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null); // Ref to the loaded image element for dimensions/drawing
-  const originalDimensionsRef = useRef<{ width: number; height: number } | null>(null);
+  // const originalDimensionsRef = useRef<{ width: number; height: number } | null>(null); // Can likely be removed if using imageRef.current.naturalWidth/Height
+
+  // Combined loading state for disabling UI elements
+  const isLoading = isLoadingMask || isLoadingModel;
 
   // --- Image Handling Callbacks ---
 
   // Clear relevant state when input changes significantly
   const resetForNewImage = () => {
     setImageSrc(null);
+    setImageFile(null); // Also clear the stored file object
     setPoints([]);
     setSavedMasks([]);
     setResultUrl(null);
     setResultFileType(null);
     setError(null);
     imageRef.current = null;
-    originalDimensionsRef.current = null;
+    // originalDimensionsRef.current = null; // Remove if not needed
     setCurrentStep("input"); // Go back to input step
+    // Reset file input visually if needed (more complex, often involves recreating the input or using form.reset())
+    const fileInput = document.getElementById('imageUpload') as HTMLInputElement;
+    if (fileInput) fileInput.value = ""; // Attempt to clear file input
   };
 
   // Handle file selection
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      resetForNewImage(); // Clear previous state
-      setImageFile(file); // Store the file object
+      // resetForNewImage(); // Reset is good, but maybe too aggressive if user just reselects same file? Let's keep it for now.
+      setImageFile(file); // Store the file object FIRST
       setInputMethod("upload"); // Ensure input method is correct
 
       const reader = new FileReader();
@@ -213,17 +335,18 @@ function App() {
         const result = e.target?.result as string;
         const img = new Image();
         img.onload = () => {
+          console.log(`Image loaded: ${img.width}x${img.height}`);
           imageRef.current = img;
-          originalDimensionsRef.current = { width: img.width, height: img.height };
-          setImageSrc(result); // Set Base64 source for canvas
+          // originalDimensionsRef.current = { width: img.width, height: img.height }; // Use naturalWidth/Height instead
+          setImageSrc(result); // Set Base64 source for canvas AFTER image is loaded
           setCurrentStep("masking"); // Move to masking step
         };
         img.onerror = () => {
-          console.error("Failed to load image.");
-          setError("Failed to load the selected image file.");
+          console.error("Failed to load image from file reader result.");
+          setError("Failed to load the selected image file. It might be corrupted or an unsupported format.");
           resetForNewImage();
         };
-        img.src = result;
+        img.src = result; // Set src AFTER defining onload/onerror
       };
       reader.onerror = () => {
         console.error("Failed to read file.");
@@ -232,9 +355,8 @@ function App() {
       };
       reader.readAsDataURL(file); // Read as Data URL for imageSrc
     } else {
-      // Handle case where user cancels file selection
-      // If imageFile was already set, don't reset unless necessary
-      if (!imageFile) {
+      // Handle case where user cancels file selection - only reset if no image was previously loaded
+      if (!imageFile && !imageSrc) {
         resetForNewImage();
       }
     }
@@ -243,10 +365,6 @@ function App() {
   // Handle text prompt input change
   const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setTextPrompt(e.target.value);
-    // Optionally clear file if text is entered and method is upload
-    // if (inputMethod === 'upload') {
-    //   setImageFile(null);
-    // }
   };
 
   // Handle generating image from text prompt
@@ -255,13 +373,18 @@ function App() {
       setError("Please enter a text prompt.");
       return;
     }
-    resetForNewImage(); // Clear previous state
+    // resetForNewImage(); // Reset happens implicitly below
     setIsLoadingModel(true); // Use model loading indicator
     setError(null);
+    setImageSrc(null); // Clear previous image display immediately
+    setImageFile(null);
+    setPoints([]);
+    setSavedMasks([]);
+    setResultUrl(null);
+    setResultFileType(null);
     setCurrentStep("generating"); // Indicate generation process
 
     try {
-      // Assume backend returns JSON with base64 image data: { image_b64: "..." }
       const response = await axios.post(GENERATE_IMAGE_URL, {
         prompt: textPrompt.trim(),
       });
@@ -272,42 +395,48 @@ function App() {
 
         const img = new Image();
         img.onload = () => {
+          console.log(`Generated image loaded: ${img.naturalWidth}x${img.naturalHeight}`);
           imageRef.current = img;
-          originalDimensionsRef.current = { width: img.width, height: img.height };
           setImageSrc(fullImageSrc); // Set Base64 source for canvas
-          // Convert Base64 back to a File object if needed for final submission consistency
-          const blob = base64ToBlob(base64ImageData, 'image/png');
-          const generatedFile = new File([blob], "generated_image.png", { type: 'image/png' });
-          setImageFile(generatedFile); // Store the generated image as a File object
-          setCurrentStep("masking"); // Move to masking step
+          // Convert Base64 back to a File object for final submission consistency
+          try {
+            const blob = base64ToBlob(base64ImageData, 'image/png');
+            const generatedFile = new File([blob], "generated_image.png", { type: 'image/png' });
+            setImageFile(generatedFile); // Store the generated image as a File object
+            setCurrentStep("masking"); // Move to masking step
+          } catch (blobError: any) {
+            console.error("Failed to convert generated base64 to Blob:", blobError);
+            setError(`Failed to process generated image data: ${blobError.message}`);
+            resetForNewImage();
+          }
         };
         img.onerror = () => {
-          setError("Failed to load the generated image.");
+          setError("Failed to load the generated image data.");
           resetForNewImage(); // Reset state on error
         };
         img.src = fullImageSrc;
 
       } else {
-        throw new Error("Backend did not return valid image data.");
+        throw new Error(response.data?.error || "Backend did not return valid image data.");
       }
     } catch (err: any) {
       console.error("Error generating image from text:", err);
       setError(err.response?.data?.error || err.message || "Failed to generate image from text.");
       resetForNewImage(); // Reset state on error
     } finally {
-      setIsLoadingModel(false);
+      // Loading state is handled by setting the step back to 'masking' or 'input' on success/error
+      // setIsLoadingModel(false); // Can remove this if step change handles UI
     }
   };
 
 
-  // --- Mask Loading Effect (from SAM2) ---
+  // --- Mask Loading Effect ---
   useEffect(() => {
+    // This effect should only run to load images for existing masks
     savedMasks.forEach((mask) => {
-      // If mask has data but isn't loaded yet
       if (mask.maskB64Png && !mask.loadedImage) {
         const maskImg = new Image();
         maskImg.onload = () => {
-          // Update the specific mask object in the array immutably
           setSavedMasks(currentMasks =>
             currentMasks.map(m =>
               m.id === mask.id ? { ...m, loadedImage: maskImg } : m
@@ -316,8 +445,9 @@ function App() {
         };
         maskImg.onerror = () => {
           console.error(`Failed to load mask image ${mask.id} from Base64.`);
-          // Optionally update the specific mask state to indicate loading error
-          setError(prev => prev ? `${prev}\nFailed to load saved mask ${mask.id}.` : `Failed to load saved mask ${mask.id}.`);
+          setError(prev => (prev ? `${prev}\n` : '') + `Failed to load display for saved mask '${mask.name}'.`);
+          // Optionally remove the broken mask or mark it as errored
+          // setSavedMasks(currentMasks => currentMasks.filter(m => m.id !== mask.id));
         };
         // Ensure the src is a valid Data URL
         maskImg.src = mask.maskB64Png.startsWith('data:image')
@@ -325,6 +455,7 @@ function App() {
           : `data:image/png;base64,${mask.maskB64Png}`;
       }
     });
+    // Filter out masks that failed to load? Maybe not automatically.
   }, [savedMasks]); // Rerun when savedMasks array changes
 
 
@@ -336,35 +467,35 @@ function App() {
 
     if (!canvas || !ctx) return;
 
-    // Clear canvas
+    // Clear canvas efficiently
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (!mainImg || !imageSrc) {
-      // Optionally draw a placeholder if imageSrc is null but canvas exists
-      ctx.fillStyle = '#f0f0f0'; // Light grey background
+    if (!mainImg || !imageSrc || mainImg.naturalWidth === 0) {
+      // Draw placeholder if no valid image
+      ctx.fillStyle = '#e0e0e0'; // Slightly darker grey background
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#a0a0a0';
+      ctx.fillStyle = '#808080';
       ctx.font = '16px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('No image loaded', canvas.width / 2, canvas.height / 2);
+      ctx.textBaseline = 'middle';
+      ctx.fillText('No image loaded or image invalid', canvas.width / 2, canvas.height / 2);
       return;
     };
 
-    // Calculate scaling to fit image within canvas while maintaining aspect ratio
+    // Calculate scaling and offset (using naturalWidth/Height)
     const canvasWidth = canvas.width;
     const canvasHeight = canvas.height;
-    const imgWidth = mainImg.naturalWidth; // Use naturalWidth for original size
+    const imgWidth = mainImg.naturalWidth;
     const imgHeight = mainImg.naturalHeight;
-
-    if (imgWidth === 0 || imgHeight === 0) return; // Avoid division by zero if image not loaded properly
-
     const scale = Math.min(canvasWidth / imgWidth, canvasHeight / imgHeight);
     const scaledWidth = imgWidth * scale;
     const scaledHeight = imgHeight * scale;
-
-    // Center the image on the canvas
     const offsetX = (canvasWidth - scaledWidth) / 2;
     const offsetY = (canvasHeight - scaledHeight) / 2;
+
+    // --- Drawing ---
+    // Use requestAnimationFrame for potentially smoother updates, though might be overkill here
+    // requestAnimationFrame(() => { // If enabling this, ensure it doesn't cause issues with dependencies
 
     // 1. Draw the main image
     ctx.drawImage(mainImg, offsetX, offsetY, scaledWidth, scaledHeight);
@@ -373,14 +504,14 @@ function App() {
     ctx.globalAlpha = 0.55; // Semi-transparent masks
     savedMasks.forEach(mask => {
       if (mask.isActive && mask.loadedImage) {
-        // Ensure mask image dimensions match the main image for correct overlay
+        // Draw mask overlay
         ctx.drawImage(mask.loadedImage, offsetX, offsetY, scaledWidth, scaledHeight);
       }
     });
     ctx.globalAlpha = 1.0; // Reset global alpha
 
-    // 3. Draw the *current* points being selected (for the next mask)
-    ctx.fillStyle = 'rgba(0, 255, 255, 0.9)'; // Cyan with slight transparency
+    // 3. Draw the *current* points being selected
+    ctx.fillStyle = 'rgba(0, 255, 255, 0.9)'; // Cyan points
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)'; // Black outline
     ctx.lineWidth = 1.5;
     points.forEach(point => {
@@ -393,36 +524,39 @@ function App() {
       ctx.stroke();
     });
 
-  }, [points, savedMasks, imageSrc]); // Depend on points, masks, and image source
+    // }); // End of requestAnimationFrame if used
 
-  // Effect to redraw canvas when image, points, or masks change
+  }, [points, savedMasks, imageSrc]); // Dependencies: Include imageSrc as it determines if mainImg is valid
+
+  // Effect to redraw canvas when relevant data changes
   useEffect(() => {
-    // Only draw if we are in a step where the canvas should be visible
-    if (currentStep === 'masking' || currentStep === 'params') {
+    // Only draw if we are in a step where the canvas should be visible AND image is loaded
+    if ((currentStep === 'masking' || currentStep === 'params') && imageSrc && canvasRef.current) {
       drawCanvas();
     }
-  }, [imageSrc, points, savedMasks, drawCanvas, currentStep]);
+    // If step changes away from masking/params, canvas doesn't need redraw
+  }, [imageSrc, points, savedMasks, drawCanvas, currentStep]); // Add drawCanvas here
 
-  // Effect for handling canvas resizing and initial draw
+  // Effect for handling canvas resizing
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || currentStep !== 'masking') return; // Only run if canvas exists and is relevant
+    // Only observe/draw if canvas exists and we are in the masking step
+    if (!canvas || currentStep !== 'masking') return;
 
     let animationFrameId: number | null = null;
 
-    // Use ResizeObserver to detect parent container size changes
     const resizeObserver = new ResizeObserver(entries => {
       if (!animationFrameId) {
         animationFrameId = requestAnimationFrame(() => {
           for (const entry of entries) {
             const { width, height } = entry.contentRect;
-            // Check if canvas dimensions actually changed to avoid redundant redraws
-            if (canvas.width !== Math.round(width) || canvas.height !== Math.round(height)) {
-              // Update canvas resolution to match display size for crispness
-              canvas.width = Math.round(width);
-              canvas.height = Math.round(height);
-              // Redraw with new dimensions
-              drawCanvas();
+            // Use Math.round to avoid fractional pixels causing infinite loops
+            const roundedWidth = Math.round(width);
+            const roundedHeight = Math.round(height);
+            if (canvas.width !== roundedWidth || canvas.height !== roundedHeight) {
+              canvas.width = roundedWidth;
+              canvas.height = roundedHeight;
+              drawCanvas(); // Redraw immediately on resize
             }
           }
           animationFrameId = null;
@@ -430,26 +564,27 @@ function App() {
       }
     });
 
-    // Observe the canvas's parent element for size changes
     const parentElement = canvas.parentElement;
     if (parentElement) {
       resizeObserver.observe(parentElement);
-      // Initial size setting and draw
+      // Set initial size based on parent
       const { width, height } = parentElement.getBoundingClientRect();
-      if (canvas.width !== Math.round(width) || canvas.height !== Math.round(height)) {
-        canvas.width = Math.round(width);
-        canvas.height = Math.round(height);
-        // Use setTimeout to ensure initial draw happens after potential layout shifts
+      const roundedWidth = Math.round(width);
+      const roundedHeight = Math.round(height);
+      if (canvas.width !== roundedWidth || canvas.height !== roundedHeight) {
+        canvas.width = roundedWidth;
+        canvas.height = roundedHeight;
+        // Initial draw needs slight delay to ensure layout is stable
         const initialDrawTimeout = setTimeout(drawCanvas, 50);
-        return () => clearTimeout(initialDrawTimeout); // Clear timeout on cleanup
+        return () => clearTimeout(initialDrawTimeout);
       } else {
+        // Still do initial draw even if size matches, in case image just loaded
         const initialDrawTimeout = setTimeout(drawCanvas, 50);
         return () => clearTimeout(initialDrawTimeout);
       }
     }
 
-
-    // Cleanup function
+    // Cleanup
     return () => {
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
@@ -458,18 +593,19 @@ function App() {
         resizeObserver.unobserve(parentElement);
       }
     };
-  }, [drawCanvas, currentStep]); // Rerun when drawCanvas changes or step becomes 'masking'
+    // Rerun this effect if the step changes *to* masking, or if drawCanvas function identity changes
+  }, [currentStep, drawCanvas]);
 
 
   // --- Point Selection ---
   const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
-    const img = imageRef.current; // Use the ref containing the loaded Image object
-    // No need for originalDimensionsRef here if we use img.naturalWidth/Height
+    const img = imageRef.current;
 
-    if (isLoadingMask || isLoadingModel || !canvas || !img || img.naturalWidth === 0) return; // Don't allow clicks while loading or if image invalid
+    // Prevent clicking if loading, or no valid canvas/image
+    if (isLoading || !canvas || !img || img.naturalWidth === 0) return;
 
-    const rect = canvas.getBoundingClientRect(); // Get canvas position on screen
+    const rect = canvas.getBoundingClientRect();
     const clickX = event.clientX - rect.left;
     const clickY = event.clientY - rect.top;
 
@@ -492,7 +628,7 @@ function App() {
       const originalX = (clickX - offsetX) / scale;
       const originalY = (clickY - offsetY) / scale;
 
-      // Add the point (using original image coordinates) to the current selection
+      // Add the point (using original image coordinates)
       setPoints(prevPoints => [...prevPoints, { x: originalX, y: originalY }]);
       setError(null); // Clear any previous errors
     }
@@ -516,33 +652,31 @@ function App() {
         points: points, // Send the current points (in original image coordinates)
       });
 
-      // Assuming backend returns: { status: 'success', mask_b64png: '...', score: 0.95 }
       if (response.data && response.data.status === 'success' && response.data.mask_b64png) {
         if (typeof response.data.mask_b64png === 'string') {
-          // Create a new mask object and add it to the saved list
+          // Create a new mask object
           const newMask: SavedMask = {
-            id: uuidv4(), // Generate unique ID
+            id: uuidv4(),
             name: `Mask ${savedMasks.length + 1}`, // Default name
             maskB64Png: response.data.mask_b64png, // Store raw base64
             points: [...points], // Store points used for this mask
-            isActive: true, // Make it active by default
+            isActive: true, // Active by default
             loadedImage: null, // Will be loaded by useEffect
             score: response.data.score,
           };
+          // Add to saved list and clear current points
           setSavedMasks(prevMasks => [...prevMasks, newMask]);
-          setPoints([]); // Clear points, ready for next selection
+          setPoints([]);
           console.log(`Saved new mask ${newMask.id}`);
         } else {
-          throw new Error('Received mask data is not in the expected format.');
+          throw new Error('Received mask data is not in the expected string format.');
         }
       } else {
-        throw new Error(response.data.message || 'Mask prediction failed on the backend.');
+        throw new Error(response.data?.message || 'Mask prediction failed on the backend.');
       }
     } catch (err: any) {
       console.error("Error predicting mask:", err);
       setError(err.response?.data?.error || err.message || "An unknown error occurred during mask prediction.");
-      // Don't clear saved masks on error, but maybe clear current points?
-      // setPoints([]);
     } finally {
       setIsLoadingMask(false);
     }
@@ -550,7 +684,7 @@ function App() {
 
   // --- Mask Management Callbacks ---
 
-  // Toggle the active state of a specific saved mask
+  // Toggle the active state
   const handleToggleMaskActive = (id: string) => {
     setSavedMasks(prevMasks =>
       prevMasks.map(mask =>
@@ -559,13 +693,15 @@ function App() {
     );
   };
 
-  // Handle renaming a mask
+  // Handle renaming a mask (updates the main state) - *** Called by MaskListItem onBlur/Enter ***
   const handleRenameMask = (id: string, newName: string) => {
     setSavedMasks(prevMasks =>
       prevMasks.map(mask =>
-        mask.id === id ? { ...mask, name: newName || `Mask ${prevMasks.findIndex(m => m.id === id) + 1}` } : mask // Use default if name is empty
+        // Ensure name is not empty, fallback to default if needed
+        mask.id === id ? { ...mask, name: newName.trim() || `Mask ${prevMasks.findIndex(m => m.id === id) + 1}` } : mask
       )
     );
+    console.log(`Renamed mask ${id} to ${newName}`);
   };
 
   // Delete a specific mask
@@ -573,17 +709,16 @@ function App() {
     setSavedMasks(prevMasks => prevMasks.filter(mask => mask.id !== id));
   };
 
-
   // Resets only the currently selected points
   const handleResetCurrentPoints = () => {
     setPoints([]);
-    setError(null); // Clear point-related errors
+    setError(null);
   };
 
   // Clears all saved masks
   const handleClearSavedMasks = () => {
     setSavedMasks([]);
-    setPoints([]); // Also clear points that might have been selected
+    setPoints([]);
     setError(null);
   };
 
@@ -598,13 +733,11 @@ function App() {
 
     activeMasks.forEach((mask) => {
       const link = document.createElement('a');
-      // Ensure the href is a valid Data URL
       link.href = mask.maskB64Png.startsWith('data:image')
         ? mask.maskB64Png
         : `data:image/png;base64,${mask.maskB64Png}`;
-      // Use mask name for filename, sanitize it
-      const safeName = mask.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-      link.download = `mask_${safeName}_${mask.id.substring(0, 6)}.png`;
+      const safeName = mask.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() || `mask_${mask.id.substring(0, 6)}`;
+      link.download = `${safeName}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -614,67 +747,51 @@ function App() {
 
   // --- 3D Model Generation ---
   const handleGenerate3DModel = async () => {
-    setError(""); // Clear previous errors
+    setError("");
     setIsLoadingModel(true);
     setResultUrl(null);
     setResultFileType(null);
-    setCurrentStep("generating"); // Indicate generation process
+    setCurrentStep("generating");
 
-    // --- Validation ---
-    if (inputMethod === "upload" && !imageFile) {
-      setError("Source image file is missing. Please re-upload.");
-      setIsLoadingModel(false);
-      setCurrentStep("input"); // Go back if image is lost
-      return;
-    }
-    if (inputMethod === "text" && !imageFile) { // Check imageFile even for text prompt (should be set after generation)
-      setError("Source image from text prompt is missing. Please regenerate.");
-      setIsLoadingModel(false);
-      setCurrentStep("input"); // Go back if image is lost
-      return;
-    }
-    // --- End Validation ---
-
-    // Build the form data
-    const formData = new FormData();
-
-    // --- Append Image Source ---
-    // Always append the imageFile, which should exist for both upload and text-gen paths
-    if (imageFile) {
-      formData.append("color_image", imageFile);
-    } else {
-      // This case should ideally be caught by validation, but as a fallback:
-      setError("Critical error: Image source not available for generation.");
+    if (!imageFile) { // Check imageFile directly
+      setError("Source image file is missing. Please re-upload or regenerate.");
       setIsLoadingModel(false);
       setCurrentStep("input");
       return;
     }
-    // Note: We don't need to send the text prompt again if the image was generated from it,
-    // the backend uses the provided image.
 
-    // --- Append Active Masks ---
+    const formData = new FormData();
+    formData.append("color_image", imageFile); // Append the file object
+
+    // Append Active Masks
     const activeMasks = savedMasks.filter(m => m.isActive);
+    let maskProcessingError = false; // Flag to stop if any mask fails
     activeMasks.forEach((mask, index) => {
+      if (maskProcessingError) return; // Skip remaining if one failed
       try {
-        // Convert Base64 mask data to a Blob/File and append
         const blob = base64ToBlob(mask.maskB64Png, 'image/png');
-        const safeName = mask.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        // Backend needs to know how to interpret these files (e.g., by filename pattern)
-        formData.append(`mask_${index}`, blob, `mask_${safeName}_${mask.id.substring(0, 6)}.png`);
-      } catch (e) {
-        console.error(`Failed to process mask ${mask.id} for upload:`, e);
-        setError(`Error processing mask "${mask.name}" for upload. Please try removing it or generating again.`);
-        setIsLoadingModel(false);
-        setCurrentStep("params"); // Go back to params step
-        return; // Stop the process if a mask fails
+        const safeName = mask.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() || `mask_${index}`;
+        // Use a consistent naming scheme the backend expects, e.g., 'mask_0', 'mask_1'
+        formData.append(`mask_${index}`, blob, `${safeName}_${mask.id.substring(0, 6)}.png`);
+      } catch (e: any) {
+        console.error(`Failed to process mask ${mask.id} ("${mask.name}") for upload:`, e);
+        setError(`Error processing mask "${mask.name}" for upload: ${e.message}. Please try removing it or generating again.`);
+        maskProcessingError = true; // Set flag
       }
     });
-    // Optionally, send mask metadata (like names or points) as JSON string if backend needs it
-    const maskMetadata = activeMasks.map(m => ({ id: m.id, name: m.name /*, points: m.points */ }));
+
+    // If any mask failed processing, stop the submission
+    if (maskProcessingError) {
+      setIsLoadingModel(false);
+      setCurrentStep("params"); // Go back to params step
+      return;
+    }
+
+    // Append mask metadata
+    const maskMetadata = activeMasks.map(m => ({ id: m.id, name: m.name }));
     formData.append("mask_metadata", JSON.stringify(maskMetadata));
 
-
-    // --- Append Model Parameters ---
+    // Append Model Parameters
     formData.append("block_width", String(blockWidth));
     formData.append("block_length", String(blockLength));
     formData.append("block_thickness", String(blockThickness));
@@ -682,46 +799,40 @@ function App() {
     formData.append("base_height", String(baseHeight));
     formData.append("mode", mode);
     formData.append("invert", String(invert));
-    // The backend should infer file type based on include_color
     formData.append("include_color", String(includeColor));
-    // --- End Append Model Parameters ---
 
     try {
       // Post to the final generation endpoint
       const response = await axios.post(GENERATE_MODEL_URL, formData, {
         headers: {
-          // Content-Type is set automatically by browser for FormData
-          // 'Content-Type': 'multipart/form-data', // Don't set manually with FormData
+          // Content-Type: 'multipart/form-data' is set automatically by axios for FormData
         },
-        // TODO: Consider add a timeout for long generations
-        // timeout: 300000, // e.g., 5 minutes
+        timeout: 300000, // 5 minute timeout for potentially long generation
       });
 
-      // Assuming backend returns { fileUrl: "...", fileType: "stl" | "ply" }
       if (response.data && response.data.fileUrl && response.data.fileType) {
         setResultUrl(response.data.fileUrl);
         setResultFileType(response.data.fileType);
-        setCurrentStep("result"); // Move to result step
+        setCurrentStep("result");
       } else {
-        throw new Error("Invalid response received from model generation endpoint.");
+        throw new Error(response.data?.error || "Invalid response received from model generation endpoint.");
       }
     } catch (err: any) {
       console.error("Error generating 3D model:", err);
-      // Display user-friendly error from backend if available
       setError(err.response?.data?.error || err.message || "An unexpected error occurred during 3D model generation.");
       setCurrentStep("params"); // Go back to params step on error
     } finally {
-      setIsLoadingModel(false);
+      setIsLoadingModel(false); // Ensure loading state is reset
     }
   };
 
   // --- Navigation Functions ---
   const goToMasking = () => {
-    if (inputMethod === 'text' && !imageSrc) {
+    if (inputMethod === 'text' && !imageSrc && !isLoading) { // Prevent navigation if already generating
       handleGenerateImageFromText(); // Generate image first if needed
     } else if (imageSrc) {
       setCurrentStep("masking");
-    } else {
+    } else if (!isLoading) { // Only show error if not loading
       setError("Please upload an image or provide a text prompt first.");
     }
   };
@@ -738,7 +849,8 @@ function App() {
 
   // --- Render Logic ---
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-6 text-gray-900 dark:text-gray-100 font-sans">
+    // Added overflow-x-hidden to prevent potential horizontal scroll issues
+    <div className="max-w-6xl mx-auto p-4 md:p-6 text-gray-900 dark:text-gray-100 font-sans overflow-x-hidden">
       {/* Page Header */}
       <header className="text-center mb-6 md:mb-8">
         <h1 className="text-3xl md:text-4xl font-bold">Text2Texture</h1>
@@ -762,15 +874,15 @@ function App() {
               <legend className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
                 Choose Input Method:
               </legend>
-              <div className="flex items-center space-x-6">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2"> {/* Added flex-wrap and gap */}
                 {/* Upload Option */}
                 <div className="flex items-center">
                   <input
                     type="radio" id="uploadMethod" name="inputMethod" value="upload"
                     checked={inputMethod === "upload"}
-                    onChange={(e) => { setInputMethod(e.target.value as "upload" | "text"); /* resetForNewImage(); */ }} // Resetting here might be too aggressive
+                    onChange={(e) => { setInputMethod(e.target.value as "upload" | "text"); }}
                     className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
-                    disabled={isLoadingModel || isLoadingMask}
+                    disabled={isLoading}
                   />
                   <label htmlFor="uploadMethod" className="ml-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Upload Image
@@ -781,9 +893,9 @@ function App() {
                   <input
                     type="radio" id="textMethod" name="inputMethod" value="text"
                     checked={inputMethod === "text"}
-                    onChange={(e) => { setInputMethod(e.target.value as "upload" | "text"); /* resetForNewImage(); */ }}
+                    onChange={(e) => { setInputMethod(e.target.value as "upload" | "text"); }}
                     className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
-                    disabled={isLoadingModel || isLoadingMask}
+                    disabled={isLoading}
                   />
                   <label htmlFor="textMethod" className="ml-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Generate from Text
@@ -802,7 +914,7 @@ function App() {
                   type="file" id="imageUpload" accept="image/*"
                   onChange={handleFileChange}
                   className="mt-1 block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-gray-600 dark:file:text-gray-200 dark:hover:file:bg-gray-500 text-gray-900 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={isLoadingModel || isLoadingMask}
+                  disabled={isLoading}
                 />
                 {imageFile && <p className="text-xs mt-1 text-gray-500 dark:text-gray-400">Selected: {imageFile.name}</p>}
               </div>
@@ -818,14 +930,14 @@ function App() {
                   placeholder="e.g., A detailed topographic map of a fantasy island"
                   rows={3}
                   className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-50"
-                  disabled={isLoadingModel || isLoadingMask}
+                  disabled={isLoading}
                 />
                 <button
                   onClick={handleGenerateImageFromText}
-                  disabled={isLoadingModel || isLoadingMask || !textPrompt.trim()}
+                  disabled={isLoading || !textPrompt.trim()}
                   className="mt-2 w-full sm:w-auto px-4 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isLoadingModel && currentStep === 'generating' ? 'Generating Image...' : 'Generate Image'}
+                  {isLoading && currentStep === 'generating' ? 'Generating Image...' : 'Generate Image'}
                 </button>
               </div>
             )}
@@ -839,15 +951,16 @@ function App() {
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Click on the image to place points. Use 'Predict & Save Mask' to generate a mask from the points. You can create multiple masks.</p>
 
               {/* Canvas Area for Masking */}
-              <div className="w-full aspect-[4/3] bg-gray-200 dark:bg-gray-700 rounded-lg shadow overflow-hidden relative mb-4 border dark:border-gray-600">
+              {/* Added min-h-[200px] or similar to prevent collapse before image loads */}
+              <div className="w-full aspect-[4/3] bg-gray-200 dark:bg-gray-700 rounded-lg shadow overflow-hidden relative mb-4 border dark:border-gray-600 min-h-[200px]">
                 <canvas
                   ref={canvasRef}
                   onClick={handleCanvasClick}
-                  className={`w-full h-full block ${isLoadingMask ? 'cursor-wait' : 'cursor-crosshair'} ${(isLoadingModel || isLoadingMask) ? 'opacity-50' : ''}`}
+                  className={`w-full h-full block ${isLoadingMask ? 'cursor-wait' : 'cursor-crosshair'} ${isLoading ? 'opacity-50 pointer-events-none' : ''}`} // Disable clicks when loading
                   style={{ imageRendering: 'pixelated' }} // Optional: for sharper pixels if needed
                 />
                 {isLoadingMask && (
-                  <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10">
+                  <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10 rounded-lg">
                     <p className="text-white text-lg font-semibold animate-pulse">Predicting Mask...</p>
                   </div>
                 )}
@@ -866,14 +979,14 @@ function App() {
               <div className="flex flex-wrap justify-start gap-2 mb-4">
                 <button
                   onClick={getMaskFromBackend}
-                  disabled={isLoadingMask || isLoadingModel || points.length === 0}
+                  disabled={isLoading || points.length === 0} // Use combined isLoading
                   className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Predict & Save Mask
                 </button>
                 <button
                   onClick={handleResetCurrentPoints}
-                  disabled={isLoadingMask || isLoadingModel || points.length === 0}
+                  disabled={isLoading || points.length === 0} // Use combined isLoading
                   className="px-4 py-2 bg-yellow-500 text-white text-sm font-semibold rounded-lg shadow hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Reset Points
@@ -886,57 +999,31 @@ function App() {
                   <h3 className="text-lg font-semibold mb-2 text-gray-700 dark:text-gray-200">
                     Saved Masks ({savedMasks.filter(m => m.isActive).length} active)
                   </h3>
-                  <ul className="space-y-2 max-h-48 overflow-y-auto pr-2 border rounded-md p-2 dark:border-gray-600">
+                  <ul className="space-y-1 max-h-48 overflow-y-auto pr-2 border rounded-md p-1 dark:border-gray-600">
+                    {/* Use the new MaskListItem component */}
                     {savedMasks.map((mask, index) => (
-                      <li key={mask.id} className="flex items-center justify-between p-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700">
-                        <input
-                          type="text"
-                          value={mask.name}
-                          onChange={(e) => handleRenameMask(mask.id, e.target.value)}
-                          onBlur={(e) => handleRenameMask(mask.id, e.target.value)} // Save on blur too
-                          className="text-sm text-gray-800 dark:text-gray-200 bg-transparent border-b border-gray-300 dark:border-gray-500 focus:outline-none focus:border-blue-500 mr-2 flex-grow"
-                          placeholder={`Mask ${index + 1}`}
-                          disabled={isLoadingMask || isLoadingModel}
-                        />
-                        <span className="text-xs text-gray-500 dark:text-gray-400 mr-2">
-                          (Score: {mask.score?.toFixed(2) ?? 'N/A'})
-                        </span>
-                        <div className="flex items-center space-x-3 flex-shrink-0">
-                          <label className="flex items-center space-x-1 cursor-pointer" title="Toggle visibility/usage">
-                            <input
-                              type="checkbox"
-                              checked={mask.isActive}
-                              onChange={() => handleToggleMaskActive(mask.id)}
-                              className="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"
-                              disabled={isLoadingMask || isLoadingModel}
-                            />
-                            <span className="text-xs text-gray-700 dark:text-gray-300">Use</span>
-                          </label>
-                          <button
-                            onClick={() => handleDeleteMask(mask.id)}
-                            title="Delete Mask"
-                            className="text-red-500 hover:text-red-700 disabled:opacity-50"
-                            disabled={isLoadingMask || isLoadingModel}
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
-                      </li>
+                      <MaskListItem
+                        key={mask.id} // Key is crucial for list performance
+                        mask={mask}
+                        index={index}
+                        isLoading={isLoading}
+                        onToggleActive={handleToggleMaskActive}
+                        onDelete={handleDeleteMask}
+                        onRename={handleRenameMask} // Pass the rename handler
+                      />
                     ))}
                   </ul>
                   <div className="flex flex-wrap justify-start gap-2 mt-3">
                     <button
                       onClick={handleDownloadActiveMasks}
-                      disabled={isLoadingMask || isLoadingModel || savedMasks.filter(m => m.isActive).length === 0}
+                      disabled={isLoading || savedMasks.filter(m => m.isActive).length === 0}
                       className="px-3 py-1 bg-teal-600 text-white text-xs font-semibold rounded-lg shadow hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Download Active Masks
                     </button>
                     <button
                       onClick={handleClearSavedMasks}
-                      disabled={isLoadingMask || isLoadingModel || savedMasks.length === 0}
+                      disabled={isLoading || savedMasks.length === 0}
                       className="px-3 py-1 bg-red-600 text-white text-xs font-semibold rounded-lg shadow hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Clear All Masks
@@ -949,7 +1036,7 @@ function App() {
               <div className="mt-6 text-center">
                 <button
                   onClick={goToParams}
-                  disabled={isLoadingMask || isLoadingModel}
+                  disabled={isLoading}
                   className="px-6 py-2 bg-green-600 text-white font-semibold rounded-lg shadow hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 disabled:opacity-50"
                 >
                   Proceed to 3D Parameters &raquo;
@@ -966,7 +1053,7 @@ function App() {
               <h2 className="text-xl md:text-2xl font-semibold mb-4 border-b pb-2 dark:border-gray-600">3. Configure 3D Model</h2>
 
               {/* Back Button */}
-              <button onClick={() => setCurrentStep('masking')} className="text-sm text-blue-600 hover:underline mb-4 dark:text-blue-400">&laquo; Back to Mask Selection</button>
+              <button onClick={() => setCurrentStep('masking')} disabled={isLoading} className="text-sm text-blue-600 hover:underline mb-4 dark:text-blue-400 disabled:opacity-50">&laquo; Back to Mask Selection</button>
 
               {/* Parameter Form Fields */}
               <div className="space-y-4">
@@ -981,7 +1068,7 @@ function App() {
                       id="blockWidth" type="number" value={blockWidth} min="1" step="1"
                       onChange={(e) => setBlockWidth(Number(e.target.value))}
                       className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-50"
-                      disabled={isLoadingModel}
+                      disabled={isLoading}
                     />
                   </div>
                   {/* Block Length */}
@@ -993,7 +1080,7 @@ function App() {
                       id="blockLength" type="number" value={blockLength} min="1" step="1"
                       onChange={(e) => setBlockLength(Number(e.target.value))}
                       className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-50"
-                      disabled={isLoadingModel}
+                      disabled={isLoading}
                     />
                   </div>
                   {/* Block Thickness */}
@@ -1005,7 +1092,7 @@ function App() {
                       id="blockThickness" type="number" value={blockThickness} min="0.1" step="0.1"
                       onChange={(e) => setBlockThickness(Number(e.target.value))}
                       className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-50"
-                      disabled={isLoadingModel}
+                      disabled={isLoading}
                     />
                   </div>
                   {/* Depth */}
@@ -1017,7 +1104,7 @@ function App() {
                       id="depth" type="number" value={depth} min="0.1" step="0.1"
                       onChange={(e) => setDepth(Number(e.target.value))}
                       className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-50"
-                      disabled={isLoadingModel}
+                      disabled={isLoading}
                     />
                   </div>
                   {/* Base Height */}
@@ -1029,7 +1116,7 @@ function App() {
                       id="baseHeight" type="number" value={baseHeight} min="0" step="0.1"
                       onChange={(e) => setBaseHeight(Number(e.target.value))}
                       className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-50"
-                      disabled={isLoadingModel}
+                      disabled={isLoading}
                     />
                   </div>
                   {/* Mode */}
@@ -1041,7 +1128,7 @@ function App() {
                       id="mode" value={mode}
                       onChange={(e) => setMode(e.target.value as "protrude" | "carve")}
                       className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-50"
-                      disabled={isLoadingModel}
+                      disabled={isLoading}
                     >
                       <option value="protrude">Protrude (lighter=higher)</option>
                       <option value="carve">Carve (lighter=lower)</option>
@@ -1057,7 +1144,7 @@ function App() {
                       id="invert" type="checkbox" checked={invert}
                       onChange={(e) => setInvert(e.target.checked)}
                       className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-500 dark:bg-gray-600 disabled:opacity-50"
-                      disabled={isLoadingModel}
+                      disabled={isLoading}
                     />
                     <label htmlFor="invert" className="ml-2 text-sm font-medium text-gray-700 dark:text-gray-300">
                       Invert Heightmap (darker = higher/lower based on mode)
@@ -1069,7 +1156,7 @@ function App() {
                       id="includeColor" type="checkbox" checked={includeColor}
                       onChange={(e) => setIncludeColor(e.target.checked)}
                       className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 dark:border-gray-500 dark:bg-gray-600 disabled:opacity-50"
-                      disabled={isLoadingModel}
+                      disabled={isLoading}
                     />
                     <label htmlFor="includeColor" className="ml-2 text-sm font-medium text-gray-700 dark:text-gray-300">
                       Include Color (generates .PLY instead of .STL)
@@ -1082,7 +1169,7 @@ function App() {
               <div className="mt-6 pt-4 border-t dark:border-gray-600">
                 <button
                   onClick={handleGenerate3DModel}
-                  disabled={isLoadingModel}
+                  disabled={isLoading} // Use combined isLoading
                   className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-md shadow-sm transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isLoadingModel && currentStep === 'generating' ? "Generating 3D Model..." : "Generate 3D Model"}
@@ -1092,16 +1179,16 @@ function App() {
           )}
 
           {/* Loading Indicator during Generation Steps */}
-          {(isLoadingModel || isLoadingMask || currentStep === 'generating') && (
+          {isLoading && currentStep === 'generating' && ( // Show only during actual generation step
             <div className="flex items-center justify-center p-4 bg-gray-100 dark:bg-gray-700 rounded-lg shadow">
               <svg className="animate-spin h-5 w-5 mr-3 text-blue-600 dark:text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
               </svg>
               <span className="text-gray-700 dark:text-gray-300">
-                {isLoadingMask ? "Predicting mask..." :
-                  isLoadingModel && currentStep === 'generating' && inputMethod === 'text' ? "Generating image..." :
-                    isLoadingModel && currentStep === 'generating' ? "Generating 3D model..." : "Processing..."}
+                {isLoadingMask ? "Predicting mask..." : // Should not happen if step is 'generating'
+                  isLoadingModel && inputMethod === 'text' ? "Generating image..." : // Check if generating image specifically
+                    isLoadingModel ? "Generating 3D model..." : "Processing..."}
                 Please wait.
               </span>
             </div>
@@ -1110,9 +1197,15 @@ function App() {
           {/* Error Display Area */}
           {error && (
             <div className="mt-4 p-3 bg-red-100 border border-red-400 text-red-700 dark:bg-red-900 dark:border-red-700 dark:text-red-200 rounded-lg shadow">
-              <p className="font-medium">Error:</p>
-              <p className="text-sm whitespace-pre-wrap">{error}</p>
-              <button onClick={() => setError(null)} className="mt-2 text-xs font-semibold text-red-800 dark:text-red-300 hover:underline">Dismiss</button>
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="font-medium">Error:</p>
+                  <p className="text-sm whitespace-pre-wrap">{error}</p>
+                </div>
+                <button onClick={() => setError(null)} className="ml-2 text-red-800 dark:text-red-300 hover:text-red-600 dark:hover:text-red-100 flex-shrink-0" aria-label="Dismiss error">
+                  &#x2715; {/* Cross symbol */}
+                </button>
+              </div>
             </div>
           )}
 
@@ -1120,7 +1213,8 @@ function App() {
 
 
         {/* Right Column: 3D Viewer / Result */}
-        <div className="lg:sticky lg:top-6 h-[50vh] lg:h-[calc(100vh-4rem)]"> {/* Make viewer taller and sticky on large screens */}
+        {/* Ensure parent has min-height if needed, or use aspect-ratio */}
+        <div className="lg:sticky lg:top-6 h-[60vh] lg:h-[calc(100vh-4rem)] min-h-[400px]"> {/* Added min-height */}
           <section id="viewer-section" className="bg-gray-100 dark:bg-gray-900 p-3 md:p-4 rounded-lg shadow-md h-full flex flex-col">
             <h2 className="text-lg md:text-xl font-semibold mb-3 text-gray-800 dark:text-gray-100 flex-shrink-0">
               {resultUrl ? 'Generated Model Preview' : '3D Preview Area'}
@@ -1143,7 +1237,7 @@ function App() {
             {/* Result Display */}
             {currentStep === 'result' && resultUrl && resultFileType && (
               <div className="flex-grow flex flex-col min-h-0"> {/* Ensure flex container takes height */}
-                <div className="mb-3 flex-shrink-0">
+                <div className="mb-3 flex-shrink-0 flex flex-wrap gap-2">
                   <a
                     href={resultUrl}
                     download // Suggest download
@@ -1157,24 +1251,26 @@ function App() {
                   </a>
                   <button
                     onClick={resetForNewImage}
-                    className="ml-3 inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md shadow-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800"
+                    disabled={isLoading} // Disable if any loading is happening
+                    className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md shadow-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800 disabled:opacity-50"
                   >
                     Start Over
                   </button>
                 </div>
                 {/* Model Viewer Container */}
-                <div className="flex-grow border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden bg-gray-200 dark:bg-gray-800 min-h-0"> {/* Ensure viewer takes remaining space */}
-                  <ModelViewer fileUrl={resultUrl} fileType={resultFileType} />
+                {/* Key forces remount on resultUrl change if needed */}
+                <div className="flex-grow border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden bg-gray-200 dark:bg-gray-800 min-h-0">
+                  <ModelViewer key={resultUrl} fileUrl={resultUrl} fileType={resultFileType} />
                 </div>
               </div>
             )}
 
             {/* Placeholder when no result and not loading */}
-            {!isLoadingModel && currentStep !== 'result' && currentStep !== 'generating' && (
+            {!isLoading && currentStep !== 'result' && currentStep !== 'generating' && (
               <div className="flex-grow flex items-center justify-center bg-gray-200 dark:bg-gray-800 rounded-md text-center p-4">
                 <p className="text-gray-500 dark:text-gray-400">
                   {currentStep === 'input' ? 'Upload or generate an image to begin.' :
-                    currentStep === 'masking' ? 'Select masks or proceed to parameters.' :
+                    currentStep === 'masking' ? 'Select points and predict masks, or proceed to parameters.' :
                       currentStep === 'params' ? 'Configure parameters and click "Generate 3D Model".' :
                         '3D model preview will appear here.'}
                 </p>
