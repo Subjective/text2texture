@@ -47,12 +47,14 @@ from dotenv import load_dotenv
 try:
     from heightmap_to_3d import generate_block_from_heightmap
     from generate_depth import get_grayscale_depth # ZoeDepth-based function
+    # Import the refactored function for auto-mask generation
+    from autolabel_and_segment import generate_masks_from_image
 except ImportError as e:
-    print(f"Error importing custom libraries (heightmap_to_3d, generate_depth): {e}")
+    print(f"Error importing custom libraries (heightmap_to_3d, generate_depth, autolabel_and_segment): {e}")
     print("Ensure these Python files are accessible.")
     exit(1)
 
-# --- SAM2 Imports ---
+# --- SAM2 Imports (for point-based prediction) ---
 try:
     from sam2.build_sam import build_sam2
     from sam2.sam2_image_predictor import SAM2ImagePredictor
@@ -62,7 +64,17 @@ except ImportError as e:
         " and installed it using 'pip install -e .'"
     )
     print(f"Import Error: {e}")
-    exit(1)
+    # Don't exit immediately, maybe only SAM2 is broken
+    # exit(1)
+
+# --- SAM-HQ and Florence-2 Imports (for auto-mask generation) ---
+try:
+    from segment_anything_hq import sam_model_registry, SamPredictor
+    from transformers import AutoModelForCausalLM, AutoProcessor
+except ImportError as e:
+    print(f"Error importing SAM-HQ/Florence-2 modules: {e}")
+    print("Please ensure 'segment-anything-hq' and 'transformers' are installed.")
+    # Don't exit immediately, maybe only auto-labeling is broken
 
 # --- Configuration ---
 load_dotenv() # Load environment variables from .env file
@@ -74,10 +86,17 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 # SAM2 Paths (Update these paths as needed)
-CONFIG_PATH = os.getenv("SAM2_CONFIG_PATH", "configs/sam2.1/sam2.1_hiera_l.yaml")
-CHECKPOINT_PATH = os.getenv("SAM2_CHECKPOINT_PATH", "checkpoints/sam2.1_hiera_large.pt")
+CONFIG_PATH = os.getenv("SAM2_CONFIG_PATH", "configs/sam2.1/sam2.1_hiera_l.yaml") # For SAM2 point prediction
+CHECKPOINT_PATH = os.getenv("SAM2_CHECKPOINT_PATH", "checkpoints/sam2.1_hiera_large.pt") # For SAM2 point prediction
 
-# --- Device Selection (SAM2 & potentially Depth Model) ---
+# SAM-HQ Paths (Update these paths as needed, loaded from .env)
+SAM_HQ_MODEL_TYPE = os.getenv("SAM_HQ_MODEL_TYPE", "vit_h") # e.g., vit_h, vit_l
+SAM_HQ_CHECKPOINT_PATH = os.getenv("SAM_HQ_CHECKPOINT_PATH") # Must be set in .env
+
+# Florence-2 Path (Hugging Face model ID)
+FLORENCE2_MODEL_ID = os.getenv("FLORENCE2_MODEL_ID", "microsoft/Florence-2-large-ft")
+
+# --- Device Selection (Used by all models) ---
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
 elif torch.backends.mps.is_available():
@@ -125,9 +144,18 @@ except Exception as e:
 # -------------------------
 
 # --- Global Variables ---
-sam2_predictor: SAM2ImagePredictor | None = None
+sam2_predictor: SAM2ImagePredictor | None = None # For point-based SAM2
+# Globals for Auto-labeling models
+florence_model = None
+florence_processor = None
+sam_hq_predictor: SamPredictor | None = None
+
 
 # --- Helper Functions ---
+
+# TODO:
+def merge_masks(main, secondary, ratio):
+    pass
 
 # -- Image Decoding/Encoding --
 def decode_base64_image(base64_string: str) -> np.ndarray | None:
@@ -238,6 +266,67 @@ def load_sam2_model():
         logger.error(f"Error loading SAM2 model: {e}", exc_info=True)
         sam2_predictor = None
         return False
+
+# --- Autolabel Model Loading ---
+def load_autolabel_models():
+    """Loads the Florence-2 and SAM-HQ models."""
+    global florence_model, florence_processor, sam_hq_predictor
+
+    # --- Load Florence-2 ---
+    try:
+        logger.info(f"Loading Florence-2 model: {FLORENCE2_MODEL_ID}...")
+        # Load model directly to the determined device
+        florence_model = AutoModelForCausalLM.from_pretrained(FLORENCE2_MODEL_ID, trust_remote_code=True).to(DEVICE).eval()
+        florence_processor = AutoProcessor.from_pretrained(FLORENCE2_MODEL_ID, trust_remote_code=True)
+        logger.info("Florence-2 model loaded successfully.")
+    except Exception as e:
+        logger.error(f"Error loading Florence-2 model '{FLORENCE2_MODEL_ID}': {e}", exc_info=True)
+        logger.error("Ensure the model ID is correct, transformers/accelerate are installed, and you have internet connectivity.")
+        florence_model = None # Mark as unloaded
+        florence_processor = None
+        # Continue loading other models if possible
+
+    # --- Load SAM-HQ ---
+    if not SAM_HQ_CHECKPOINT_PATH or not os.path.exists(SAM_HQ_CHECKPOINT_PATH):
+        logger.error(f"SAM-HQ checkpoint file not found or not specified in .env (SAM_HQ_CHECKPOINT_PATH). Path: '{SAM_HQ_CHECKPOINT_PATH}'")
+        sam_hq_predictor = None # Mark as unloaded
+        return # Cannot proceed without checkpoint
+
+    try:
+        logger.info(f"Loading SAM-HQ model type: {SAM_HQ_MODEL_TYPE} structure...")
+        # Instantiate model structure (try checkpoint=None first)
+        sam_model_hq = sam_model_registry[SAM_HQ_MODEL_TYPE](checkpoint=None)
+
+        logger.info(f"Loading SAM-HQ checkpoint state_dict: {SAM_HQ_CHECKPOINT_PATH} with map_location='{DEVICE}'...")
+        state_dict = torch.load(SAM_HQ_CHECKPOINT_PATH, map_location=DEVICE)
+        sam_model_hq.load_state_dict(state_dict)
+        sam_model_hq = sam_model_hq.to(DEVICE).eval()
+        sam_hq_predictor = SamPredictor(sam_model_hq)
+        logger.info(f"SAM-HQ predictor ('{SAM_HQ_MODEL_TYPE}') loaded successfully on device: {DEVICE}")
+
+    except TypeError as te:
+         if "'NoneType'" in str(te):
+              logger.warning(f"Failed loading SAM-HQ structure with checkpoint=None ({te}). Attempting workaround...")
+              try:
+                  # WORKAROUND: Instantiate with the checkpoint path, then immediately overwrite state_dict
+                  sam_model_hq = sam_model_registry[SAM_HQ_MODEL_TYPE](checkpoint=SAM_HQ_CHECKPOINT_PATH) # Initial load
+                  state_dict = torch.load(SAM_HQ_CHECKPOINT_PATH, map_location=DEVICE) # Load correctly mapped state_dict
+                  sam_model_hq.load_state_dict(state_dict) # Overwrite
+                  sam_model_hq = sam_model_hq.to(DEVICE).eval() # Ensure final move and eval mode
+                  sam_hq_predictor = SamPredictor(sam_model_hq)
+                  logger.info(f"SAM-HQ predictor ('{SAM_HQ_MODEL_TYPE}') loaded successfully using workaround.")
+              except Exception as e_workaround:
+                  logger.error(f"SAM-HQ workaround failed: {e_workaround}", exc_info=True)
+                  sam_hq_predictor = None # Mark as unloaded
+         else:
+            logger.error(f"Error loading SAM-HQ model (TypeError): {te}", exc_info=True)
+            sam_hq_predictor = None # Mark as unloaded
+    except KeyError:
+         logger.error(f"Error: SAM-HQ model type '{SAM_HQ_MODEL_TYPE}' not found in registry.")
+         sam_hq_predictor = None # Mark as unloaded
+    except Exception as e:
+        logger.error(f"Error loading SAM-HQ model: {e}", exc_info=True)
+        sam_hq_predictor = None # Mark as unloaded
 
 # --- Flask App ---
 app = Flask(__name__)
@@ -384,6 +473,75 @@ def api_predict_mask():
         "score": score,
     })
 
+@app.route("/api/generate_masks", methods=["POST"])
+def api_generate_masks():
+    """API endpoint for automatic mask generation using Florence-2 and SAM-HQ."""
+    global florence_model, florence_processor, sam_hq_predictor
+
+    if not all([florence_model, florence_processor, sam_hq_predictor]):
+        logger.error("Auto-labeling models not loaded, cannot generate masks.")
+        return jsonify({"status": "error", "message": "Automatic mask generation service not available"}), 503
+
+    data = request.get_json()
+    if not data or "image" not in data:
+        return jsonify({"status": "error", "message": "Missing 'image' in request data"}), 400
+
+    base64_image_str = data["image"]
+    if not base64_image_str:
+        return jsonify({"status": "error", "message": "'image' cannot be empty"}), 400
+
+    logger.info("Decoding image for automatic mask generation...")
+    image_rgb = decode_base64_image(base64_image_str)
+    if image_rgb is None:
+        return jsonify({"status": "error", "message": "Invalid image data provided"}), 400
+    logger.info(f"Image decoded successfully: shape={image_rgb.shape}")
+
+    try:
+        logger.info("Calling generate_masks_from_image function...")
+        # Call the refactored function with pre-loaded models
+        # Assuming default hq_token_only=False for now, could make this configurable via request
+        masks_tensor, labels, scores_tensor = generate_masks_from_image(
+            image_rgb=image_rgb,
+            florence_model=florence_model,
+            florence_processor=florence_processor,
+            sam_predictor=sam_hq_predictor,
+            device=DEVICE,
+            hq_token_only=False # Or get from request if needed
+        )
+        logger.info(f"Received {masks_tensor.shape[0]} masks from generation function.")
+
+        # Process results
+        results = []
+        # Move tensors to CPU for iteration and encoding
+        masks_cpu = masks_tensor.cpu()
+        scores_cpu = scores_tensor.cpu().tolist() # Convert scores to list
+
+        for i in range(masks_cpu.shape[0]):
+            mask_bool = masks_cpu[i].numpy().astype(bool) # Get individual mask as numpy bool array
+            label = labels[i] if i < len(labels) else "unknown"
+            score = scores_cpu[i] if i < len(scores_cpu) else 0.0
+
+            logger.debug(f"Encoding mask {i} ('{label}')...")
+            b64_png_mask = encode_mask_to_base64_png(mask_bool)
+            if b64_png_mask:
+                results.append({
+                    "mask_b64png": b64_png_mask, # Matches frontend AutoGeneratedMaskData type
+                    "label": label,
+                    "score": score,
+                })
+            else:
+                logger.warning(f"Failed to encode mask {i} ('{label}') to Base64 PNG.")
+
+        logger.info(f"Successfully processed and encoded {len(results)} masks.")
+        return jsonify({
+            "status": "success",
+            "masks": results # Return the list of mask objects
+        })
+
+    except Exception as e:
+        logger.error(f"Error during automatic mask generation: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": f"Automatic mask generation failed: {e}"}), 500
+
 
 @app.route("/api/generate_model", methods=["POST"])
 def api_generate_3d_model():
@@ -509,6 +667,7 @@ def api_generate_3d_model():
             mode=mode,
             invert=invert,
             color_reference=color_reference_param,
+            # TODO: If mask is not included, auto generate them
             # --- Pass Mask Data (Requires library modification) ---
             # mask_paths=list(saved_mask_files.values()), # Pass list of mask file paths
             # mask_metadata=mask_metadata # Pass associated metadata
@@ -556,17 +715,26 @@ def serve_output(filename):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    logger.info("Starting combined Flask backend...")
-    logger.info("Loading SAM2 model...")
-    if load_sam2_model():
-        logger.info("SAM2 Model loaded successfully.")
-        # Determine host and port from environment variables or defaults
-        host = os.getenv("FLASK_HOST", "127.0.0.1") # Default to localhost
-        port = int(os.getenv("FLASK_PORT", 5000)) # Default to 5000
-        debug_mode = os.getenv("FLASK_DEBUG", "True").lower() in ["true", "1", "yes"]
-        logger.info(f"Starting Flask server on {host}:{port} (Debug: {debug_mode})...")
-        # Use waitress or gunicorn in production instead of Flask's built-in server
-        app.run(host=host, port=port, debug=debug_mode)
-    else:
-        logger.critical("Failed to load SAM2 model. Backend cannot start correctly.")
-        exit(1)
+    logger.info("Starting Flask backend...")
+
+    # Load SAM2 model (for point prediction) on startup
+    if not load_sam2_model():
+        logger.warning("Failed to load SAM2 model. Point-based mask prediction endpoint will not work.")
+        # Decide if the app should exit or run without the model
+        # exit(1) # Uncomment to exit if SAM2 loading fails
+
+    # Load Autolabel models (Florence-2 + SAM-HQ) on startup
+    load_autolabel_models() # This function logs errors internally
+    if not all([florence_model, florence_processor, sam_hq_predictor]):
+         logger.warning("One or more auto-labeling models failed to load. Automatic mask generation endpoint will not work.")
+         # Decide if the app should exit or run without these models
+
+    # Start Flask development server
+    # Use debug=False in production.
+    # Determine host and port from environment variables or defaults
+    host = os.getenv("FLASK_HOST", "127.0.0.1") # Default to loopback address
+    port = int(os.getenv("FLASK_PORT", 5000)) # Default to 5000
+    debug_mode = os.getenv("FLASK_DEBUG", "True").lower() in ["true", "1", "yes"]
+    logger.info(f"Starting Flask server on {host}:{port} (Debug: {debug_mode})...")
+    app.run(host=host, port=port, debug=debug_mode)
+    logger.info("Flask backend stopped.")
