@@ -1,0 +1,23 @@
+# ─── Web back-end ──────────────────────────────────────────────────────────────
+Flask
+Flask-Cors
+
+# ─── Core scientific stack ────────────────────────────────────────────────────
+torch
+torchvision
+numpy
+opencv-python-headless
+Pillow
+matplotlib
+
+# ─── Utility & infra ──────────────────────────────────────────────────────────
+requests
+python-dotenv
+openai
+
+# ─── 3-D geometry ─────────────────────────────────────────────────────────────
+numpy-stl
+
+# ─── Vision / depth / segmentation ────────────────────────────────────────────
+git+https://github.com/facebookresearch/sam2.git
+timm==0.6.7  # vision backbones ZoeDepth relies on (see https://github.com/isl-org/ZoeDepth/issues/97)
