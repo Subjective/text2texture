@@ -419,14 +419,17 @@ function App() {
             const generatedFile = new File([blob], generatedFilename, { type: 'image/png' });
             setImageFile(generatedFile);
             setUploadedImageFilename(generatedFilename); // Store filename for auto-mask API
+            setIsLoadingModel(false); // Explicitly set loading false here
             setCurrentStep("masking");
           } catch (blobError: any) {
             console.error("Failed to convert generated base64 to Blob:", blobError);
             setError(`Failed to process generated image data: ${blobError.message}`);
+            setIsLoadingModel(false); // Ensure loading is false on error
             resetForNewImage();
           }
         };
         img.onerror = () => {
+console.error('[Debug] Backend response missing image_b64 or invalid:', response.data); // Add log
           setError("Failed to load the generated image data.");
           resetForNewImage(); // Reset state on error
         };
@@ -437,6 +440,7 @@ function App() {
       }
     } catch (err: any) {
       console.error("Error generating image from text:", err);
+      setIsLoadingModel(false); // Ensure loading is false on error
       setError(err.response?.data?.error || err.message || "Failed to generate image from text.");
       resetForNewImage(); // Reset state on error
     } finally {
