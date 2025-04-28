@@ -59,40 +59,48 @@ def initialize_openai_client():
             _openai_client = None
     return _openai_client
 
-def load_hq_sam_model():
-    """Loads the SAM-HQ model predictor and Florence-2 using paths from config."""
-    global _florence_model, _florence_processor, _sam_hq_predictor
+def load_florence_model():
+    """Loads the Florence-2 model and processor using paths from config."""
+    global _florence_model, _florence_processor
 
     # Check if already loaded
-    if _florence_model and _florence_processor and _sam_hq_predictor:
-        logger.info("Autolabel models (Florence-2, SAM-HQ) already loaded.")
+    if _florence_model and _florence_processor:
+        logger.info("Florence-2 model already loaded.")
         return True
 
-    florence_loaded = False
+    if not AutoModelForCausalLM or not AutoProcessor:
+        logger.warning("Florence-2 library components not imported correctly. Cannot load Florence-2 model.")
+        return False
+
+    try:
+        logger.info(f"Loading Florence-2 model: {config.FLORENCE2_MODEL_ID}...")
+        _florence_model = AutoModelForCausalLM.from_pretrained(config.FLORENCE2_MODEL_ID, trust_remote_code=True).to(config.DEVICE).eval()
+        _florence_processor = AutoProcessor.from_pretrained(config.FLORENCE2_MODEL_ID, trust_remote_code=True)
+        logger.info("Florence-2 model loaded successfully.")
+        return True
+    except Exception as e:
+        logger.error(f"Error loading Florence-2 model '{config.FLORENCE2_MODEL_ID}': {e}", exc_info=True)
+        logger.error("Ensure the model ID is correct, transformers/accelerate are installed, and you have internet connectivity.")
+        _florence_model = None
+        _florence_processor = None
+        return False
+
+def load_sam_hq_model():
+    """Loads the SAM-HQ model predictor using paths from config."""
+    global _sam_hq_predictor
+
+    # Check if already loaded
+    if _sam_hq_predictor:
+        logger.info("SAM-HQ model already loaded.")
+        return True
+
     sam_hq_loaded = False
 
-    # --- Load Florence-2 ---
-    if not _florence_model and AutoModelForCausalLM and AutoProcessor: # Check imports succeeded
-        try:
-            logger.info(f"Loading Florence-2 model: {config.FLORENCE2_MODEL_ID}...")
-            _florence_model = AutoModelForCausalLM.from_pretrained(config.FLORENCE2_MODEL_ID, trust_remote_code=True).to(config.DEVICE).eval()
-            _florence_processor = AutoProcessor.from_pretrained(config.FLORENCE2_MODEL_ID, trust_remote_code=True)
-            logger.info("Florence-2 model loaded successfully.")
-            florence_loaded = True
-        except Exception as e:
-            logger.error(f"Error loading Florence-2 model '{config.FLORENCE2_MODEL_ID}': {e}", exc_info=True)
-            logger.error("Ensure the model ID is correct, transformers/accelerate are installed, and you have internet connectivity.")
-            _florence_model = None
-            _florence_processor = None
-    elif not _florence_model:
-         logger.warning("Florence-2 library components not imported correctly. Cannot load Florence-2 model.")
-
-
     # --- Load SAM-HQ ---
-    if not _sam_hq_predictor and sam_model_registry and SamPredictor: # Check imports succeeded
+    if sam_model_registry and SamPredictor: # Check imports succeeded
         if not config.SAM_HQ_CHECKPOINT_PATH or not os.path.exists(config.SAM_HQ_CHECKPOINT_PATH):
             logger.error(f"SAM-HQ checkpoint file not found or not specified in .env (SAM_HQ_CHECKPOINT_PATH). Path: '{config.SAM_HQ_CHECKPOINT_PATH}'")
-            _sam_hq_predictor = None
+            _sam_hq_predictor = None # Ensure it's None if path is missing
         else:
             try:
                 logger.info(f"Loading SAM-HQ model type: {config.SAM_HQ_MODEL_TYPE} structure...")
@@ -133,8 +141,6 @@ def load_hq_sam_model():
     elif not _sam_hq_predictor:
         logger.warning("SAM-HQ library components not imported correctly. Cannot load SAM-HQ model.")
 
-    # Return True only if both critical models were intended and successfully loaded
-    # Modify this logic based on which models are essential for the app to run
     return sam_hq_loaded # Only care about SAM-HQ for segmentation tasks
 
 def load_zoe_depth_model():
@@ -160,13 +166,14 @@ def load_zoe_depth_model():
 def load_all_models():
     """Loads all required models and initializes clients."""
     logger.info("--- Starting Model Loading ---")
-    hq_sam_ok = load_hq_sam_model() # Renamed function
-    zoe_depth_ok = load_zoe_depth_model() # Load ZoeDepth
+    florence_ok = load_florence_model()
+    sam_hq_ok = load_sam_hq_model()
+    zoe_depth_ok = load_zoe_depth_model()
     openai_ok = initialize_openai_client() is not None
     logger.info("--- Model Loading Attempted ---")
-    logger.info(f"HQ-SAM Loaded: {hq_sam_ok}") # Updated log
-    # Florence is loaded within load_hq_sam_model, log separately if needed
-    logger.info(f"ZoeDepth Loaded: {zoe_depth_ok}") # Log ZoeDepth status
+    logger.info(f"Florence-2 Loaded: {florence_ok}")
+    logger.info(f"HQ-SAM Loaded: {sam_hq_ok}")
+    logger.info(f"ZoeDepth Loaded: {zoe_depth_ok}")
     logger.info(f"OpenAI Client Initialized: {openai_ok}")
     # TODO: add checks here to see if critical models failed and raise an error
 
