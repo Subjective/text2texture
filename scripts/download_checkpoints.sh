@@ -9,7 +9,6 @@ CHECKPOINT_TARGET="checkpoints/sam_hq_vit_l.pth"
 
 # Create directories if they don't exist
 mkdir -p checkpoints
-mkdir -p "$CONFIG_TARGET_DIR"
 
 # Download checkpoint if it doesn't exist
 if [ ! -f "$CHECKPOINT_TARGET" ]; then
