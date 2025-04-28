@@ -321,12 +321,6 @@ def api_generate_3d_model():
     try:
         logger.info(f"Copying final heightmap {heightmap_to_use} to {output_heightmap_path}")
         shutil.copy2(heightmap_to_use, output_heightmap_path)
-        if heightmap_path in files_to_remove:
-            files_to_remove.remove(heightmap_path)
-            logger.debug(f"Removed base heightmap {heightmap_path} from cleanup list.")
-        if merged_heightmap_path and merged_heightmap_path in files_to_remove:
-            files_to_remove.remove(merged_heightmap_path)
-            logger.debug(f"Removed merged heightmap {merged_heightmap_path} from cleanup list.")
     except Exception as e:
         logger.error(f"Error copying final heightmap to output folder: {e}", exc_info=True)
 
