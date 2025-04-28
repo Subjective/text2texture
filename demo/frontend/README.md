@@ -1,54 +1,108 @@
-# React + TypeScript + Vite
+# Demo Frontend README
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This directory contains the React + TypeScript frontend for the Text2Texture demo application, built using Vite.
 
-Currently, two official plugins are available:
+## Functionality
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The frontend provides a user interface for interacting with the Text2Texture backend APIs:
 
-## Expanding the ESLint configuration
+1.  **Image Generation:** Allows users to input text prompts to generate images via the backend's DALL-E integration.
+2.  **Masking Interface:**
+    *   Displays generated images.
+    *   Supports automatic mask generation requests to the backend.
+    *   Allows users to click points on the image to generate specific masks via the backend's SAM 2 integration.
+    *   Manages and displays generated masks.
+3.  **3D Model Generation:** Sends the generated image (and selected masks) to the backend to create a 3D model.
+4.  **Model Viewing:** Displays the generated 3D model (STL/PLY) using a suitable viewer component.
+5.  **Parameter Control:** Provides UI elements to adjust parameters for various backend processes (though specific parameters might be handled implicitly or explicitly).
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Project Structure
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ["./tsconfig.node.json", "./tsconfig.app.json"],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-});
+```text
+demo/frontend/
+├── public/                 # Static assets
+│   └── vite.svg
+├── src/                    # Source code
+│   ├── assets/             # Image assets (e.g., react.svg)
+│   ├── components/         # Reusable React components
+│   │   ├── ErrorMessage/
+│   │   ├── InputSection/
+│   │   ├── LoadingIndicator/
+│   │   ├── MaskingSection/
+│   │   ├── MaskList/
+│   │   ├── ModelViewer/
+│   │   ├── ParamsSection/
+│   │   └── ResultSection/
+│   ├── config/             # Configuration files (e.g., API endpoints)
+│   │   └── api.ts
+│   ├── hooks/              # Custom React hooks for state management and logic
+│   │   ├── useAppWorkflow.ts
+│   │   ├── useImageInput.ts
+│   │   ├── useMasking.ts
+│   │   ├── useModelGeneration.ts
+│   │   └── useModelParams.ts
+│   ├── services/           # API interaction logic
+│   │   └── api.ts
+│   ├── types/              # TypeScript type definitions
+│   │   └── app.types.ts
+│   ├── utils/              # Utility functions
+│   │   └── blobUtils.ts
+│   ├── App.css             # Main application styles
+│   ├── App.tsx             # Root application component
+│   ├── index.css           # Global styles
+│   ├── main.tsx            # Application entry point
+│   └── vite-env.d.ts       # Vite environment types
+├── .gitignore              # Git ignore rules
+├── .mise.toml              # Mise configuration (for Node.js version)
+├── eslint.config.js        # ESLint configuration
+├── index.html              # Main HTML entry point
+├── package-lock.json       # Exact dependency versions
+├── package.json            # Project metadata and dependencies
+├── README.md               # This file
+├── tsconfig.app.json       # TypeScript config for the app
+├── tsconfig.json           # Base TypeScript config
+├── tsconfig.node.json      # TypeScript config for Node scripts (like Vite config)
+└── vite.config.ts          # Vite build configuration
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Setup
 
-```js
-// eslint.config.js
-import reactX from "eslint-plugin-react-x";
-import reactDom from "eslint-plugin-react-dom";
+1.  **Prerequisites:**
+    *   Node.js (Version specified in `.mise.toml`)
+    *   npm (usually comes with Node.js)
+    *   (Optional but Recommended) `mise` for automatic Node.js version management.
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    "react-x": reactX,
-    "react-dom": reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs["recommended-typescript"].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-});
-```
+2.  **Environment & Dependencies (Using Mise - Recommended):**
+    *   If you have `mise` installed (see [mise.jdx.dev](https://mise.jdx.dev/)), simply navigate to the `demo/frontend` directory in your terminal and run:
+        ```bash
+        mise install
+        # or just `mise i`
+        ```
+    *   This command will automatically:
+        *   Read the `.mise.toml` file.
+        *   Install the correct Node.js version specified.
+        *   Install all dependencies listed in `package.json` using `npm install`.
+    *   `mise` will automatically use the correct Node version whenever you `cd` into this directory.
+
+3.  **Environment & Dependencies (Manual):**
+    *   Ensure you have the correct Node.js version installed (check `.mise.toml` or `package.json` engines field if present). You can use tools like `nvm` to manage Node versions.
+    *   Navigate to the `demo/frontend` directory.
+    *   Install dependencies:
+        ```bash
+        npm install
+        ```
+
+4.  **Configure Backend URL:**
+    *   The frontend needs to know where the backend server is running. This is typically configured in `src/config/api.ts` or via environment variables.
+    *   By default, it assumes the backend is running on `http://127.0.0.1:5000`. If your backend runs on a different address or port, update the configuration accordingly. Check `src/config/api.ts` or look for `.env` file usage.
+
+## Running the Frontend
+
+1.  Navigate to the `demo/frontend` directory in your terminal.
+2.  If using `mise`, the correct Node version should be active. If managing manually, ensure the correct Node version is selected.
+3.  Start the Vite development server:
+    ```bash
+    npm run dev
+    ```
+4.  This will typically start the frontend application and make it accessible in your web browser, often at `http://localhost:5173` (Vite's default). The terminal output will provide the exact URL.
+5.  Ensure the backend server is also running for the frontend to function correctly.
