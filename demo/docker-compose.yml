@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: text2texture-backend
+    ports:
+      - "5000:5000" # Map host port 5000 to container port 5000 (Flask)
+    volumes:
+      # Mount checkpoints and configs from the project root into the container
+      # Assumes checkpoints and configs directories exist at the same level as the demo directory
+      - ../checkpoints:/app/checkpoints:ro # Read-only is safer for checkpoints
+      - ../configs:/app/configs:ro       # Read-only is safer for configs
+      # Mount output and upload folders from the backend directory
+      - ./backend/outputs:/app/outputs
+      - ./backend/uploads:/app/uploads
+    # Optionally load environment variables from a .env file in the backend context
+    env_file:
+      - ./backend/.env.example # Use example as default, override locally with .env
+    # Explicitly set paths for container environment, overriding any from env_file
+    environment:
+      SAM2_CONFIG_PATH: /app/configs/sam2.1/sam2.1_hiera_l.yaml
+      SAM2_CHECKPOINT_PATH: /app/checkpoints/sam2.1_hiera_large.pt
+      SAM_HQ_CHECKPOINT_PATH: /app/checkpoints/sam_hq_vit_h.pth # Adjust filename if needed based on SAM_HQ_MODEL_TYPE
+      # Other variables like OPENAI_API_KEY will still be loaded from env_file if not set here
+    # Restart policy
+    restart: unless-stopped
+    # Add healthcheck if needed
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"] # Example healthcheck endpoint
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: text2texture-frontend
+    ports:
+      - "8080:80" # Map host port 8080 to container port 80 (Nginx)
+    depends_on:
+      - backend # Ensure backend starts before frontend (optional, but good practice)
+    restart: unless-stopped
+    # Nginx doesn't typically need volumes unless serving dynamic content not in the image
+
+volumes:
+  # Define named volumes if needed for more complex persistence scenarios,
+  # but for this setup, bind mounts seem more appropriate for checkpoints/configs.
+  checkpoints_data:
+  configs_data:
+  outputs_data:
+  uploads_data:
+
+# Note: Ensure the .env file exists in demo/backend/ or adjust env_file path.
+# The .env file should contain secrets like OPENAI_API_KEY and SAM_HQ_CHECKPOINT_PATH.
+# Remember to run `scripts/download_checkpoints.sh` first to populate checkpoints/ and configs/.
