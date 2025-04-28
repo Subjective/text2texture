@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface ErrorMessageProps {
   error: string | null;
   onDismiss: () => void; // Callback to clear the error

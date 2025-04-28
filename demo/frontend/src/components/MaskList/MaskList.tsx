@@ -1,4 +1,3 @@
-import React from 'react';
 import { SavedMask } from '../../types/app.types';
 import { MaskListItem } from './MaskListItem'; // Import the item component
 

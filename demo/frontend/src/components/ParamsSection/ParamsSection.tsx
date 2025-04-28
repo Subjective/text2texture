@@ -1,4 +1,3 @@
-import React from 'react';
 import { UseModelParamsReturn } from '../../hooks/useModelParams'; // Import hook return type
 
 interface ParamsSectionProps {

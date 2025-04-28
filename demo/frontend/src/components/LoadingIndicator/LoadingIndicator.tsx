@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface LoadingIndicatorProps {
   message?: string; // Optional message to display
   size?: 'sm' | 'md' | 'lg'; // Optional size control

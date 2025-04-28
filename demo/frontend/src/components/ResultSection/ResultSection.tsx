@@ -1,4 +1,3 @@
-import React from 'react';
 import { ModelViewer } from '../ModelViewer/ModelViewer'; // Import the viewer
 import { ModelGenerationResult } from '../../hooks/useModelGeneration'; // Import result type
 
