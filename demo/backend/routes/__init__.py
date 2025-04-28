@@ -1,0 +1,1 @@
+# Initializes the routes package for Flask Blueprints
