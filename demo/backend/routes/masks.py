@@ -7,7 +7,7 @@ from flask import Blueprint, jsonify, request
 # Import configuration, models, processing functions, and utilities
 import config
 import models
-from processing.segmentation import generate_masks_from_image # Assuming this is the correct function
+from processing.segmentation import generate_masks_from_image, predict_mask_with_points # Import new function
 from utils.image_utils import decode_base64_image, encode_mask_to_base64_png
 
 # Get logger
@@ -20,10 +20,10 @@ masks_bp = Blueprint('masks', __name__, url_prefix='/api')
 
 @masks_bp.route("/predict_mask", methods=["POST"])
 def api_predict_mask():
-    """API endpoint to predict mask based on image and points using SAM2."""
-    sam2_predictor = models.get_sam2_predictor() # Get predictor from models module
-    if sam2_predictor is None:
-        logger.error("SAM2 model not loaded, cannot predict mask.")
+    """API endpoint to predict mask based on image and points using SAM-HQ."""
+    sam_hq_predictor = models.get_sam_hq_predictor() # Get HQ-SAM predictor
+    if sam_hq_predictor is None:
+        logger.error("SAM-HQ model not loaded, cannot predict mask.")
         return jsonify({"status": "error", "message": "Mask prediction model not loaded"}), 503 # Service Unavailable
 
     data = request.get_json()
@@ -43,37 +43,36 @@ def api_predict_mask():
     logger.info(f"Image decoded successfully: shape={image_rgb.shape}")
 
     try:
-        # Convert points from frontend format [{x: val, y: val}, ...] to numpy array
-        point_coords_np = np.array([[p["x"], p["y"]] for p in points_data])
-        # SAM2 expects labels (1 for foreground point)
-        point_labels_np = np.ones(point_coords_np.shape[0])
-        # SAM2 expects batch dimension: (1, num_points, 2) and (1, num_points)
-        point_coords = point_coords_np[None, :, :]
-        point_labels = point_labels_np[None, :]
-        logger.info(f"Processed {point_coords.shape[1]} points. Input shape: {point_coords.shape}")
+        # Convert points from frontend format [{x: val, y: val}, ...] to list of tuples and list of labels
+        # Assuming all points are foreground points (label=1) for now
+        point_coords_list = [(p["x"], p["y"]) for p in points_data]
+        point_labels_list = [1] * len(point_coords_list) # All foreground points
+        logger.info(f"Processed {len(point_coords_list)} points.")
     except (KeyError, TypeError, IndexError) as e:
         logger.error(f"Invalid point format received: {e}", exc_info=True)
         return jsonify({"status": "error", "message": f"Invalid point format: {e}"}), 400
 
-    # --- Run SAM2 Prediction ---
+    # --- Run SAM-HQ Prediction ---
     try:
         # Use config for device and dtype
         with torch.autocast(device_type=config.DEVICE.type, dtype=config.AUTOCAST_DTYPE):
-            logger.info("Setting image in SAM2 predictor...")
-            sam2_predictor.set_image(image_rgb) # Set the image for the predictor
-            logger.info("Running SAM2 prediction...")
-            # multimask_output=False returns the highest-scoring mask
-            masks, scores, logits = sam2_predictor.predict(
-                point_coords=point_coords,
-                point_labels=point_labels,
+            logger.info("Running SAM-HQ point prediction...")
+            # Call the new function from segmentation.py
+            masks_tensor, scores_tensor = predict_mask_with_points(
+                image_rgb=image_rgb,
+                points=point_coords_list,
+                point_labels=point_labels_list,
+                sam_predictor=sam_hq_predictor,
+                device=config.DEVICE,
                 multimask_output=False, # Get single best mask
+                hq_token_only=False # Use default setting for now
             )
-            logger.info(f"Prediction complete. Mask type: {type(masks)}, Scores type: {type(scores)}")
+            logger.info(f"Prediction complete. Mask shape: {masks_tensor.shape}, Scores shape: {scores_tensor.shape}")
 
-            # Process the output mask (should be shape [1, H, W])
-            if isinstance(masks, torch.Tensor):
-                if masks.ndim == 3 and masks.shape[0] == 1:
-                    output_mask_tensor = masks.squeeze(0) # Remove batch dim -> [H, W]
+            # Process the output mask (should be shape [1, H, W] if multimask=False)
+            if isinstance(masks_tensor, torch.Tensor):
+                if masks_tensor.ndim == 3 and masks_tensor.shape[0] == 1:
+                    output_mask_tensor = masks_tensor.squeeze(0) # Remove mask dim -> [H, W]
                     output_mask = output_mask_tensor.cpu().numpy() # To numpy
                 else:
                      raise ValueError(f"Unexpected mask tensor output shape: {masks.shape}. Expected (1, H, W).")
@@ -86,9 +85,9 @@ def api_predict_mask():
                 raise TypeError(f"Unexpected mask type from predictor: {type(masks)}")
 
             output_mask_bool = output_mask.astype(bool) # Ensure boolean type
-
+            scores = scores_tensor # Use the scores tensor directly
     except Exception as e:
-        logger.error(f"Error during SAM2 prediction: {e}", exc_info=True)
+        logger.error(f"Error during SAM-HQ point prediction: {e}", exc_info=True)
         return jsonify({"status": "error", "message": f"Mask prediction failed: {e}"}), 500
 
     # --- Encode Result Mask to Base64 PNG ---

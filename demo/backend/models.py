@@ -8,16 +8,6 @@ import config
 
 # --- Model Specific Imports ---
 
-# SAM2 Imports
-try:
-    from sam2.build_sam import build_sam2
-    from sam2.sam2_image_predictor import SAM2ImagePredictor
-except ImportError as e:
-    print(f"Error importing SAM2 library components: {e}")
-    print("Ensure SAM2 is installed correctly ('pip install -e ./sam2'). Point-based prediction will be unavailable.")
-    build_sam2 = None
-    SAM2ImagePredictor = None
-
 # SAM-HQ and Florence-2 Imports
 try:
     from segment_anything_hq import sam_model_registry, SamPredictor
@@ -38,7 +28,6 @@ except ImportError as e:
 logger = logging.getLogger(__name__)
 
 # Variables to hold initialized models/clients
-_sam2_predictor: SAM2ImagePredictor | None = None
 _florence_model = None
 _florence_processor = None
 _sam_hq_predictor: SamPredictor | None = None
@@ -70,43 +59,8 @@ def initialize_openai_client():
             _openai_client = None
     return _openai_client
 
-def load_sam2_model():
-    """Loads the SAM2 model predictor using paths from config."""
-    global _sam2_predictor
-    if _sam2_predictor is not None:
-        logger.info("SAM2 predictor already loaded.")
-        return True # Already loaded
-
-    if not SAM2ImagePredictor or not build_sam2:
-         logger.error("SAM2 library components not imported correctly. Cannot load SAM2 model.")
-         return False
-
-    if not os.path.exists(config.SAM2_CONFIG_PATH):
-        logger.error(f"SAM2 Config file not found: {config.SAM2_CONFIG_PATH}")
-        return False
-    if not os.path.exists(config.SAM2_CHECKPOINT_PATH):
-        logger.error(f"SAM2 Checkpoint file not found: {config.SAM2_CHECKPOINT_PATH}")
-        return False
-
-    try:
-        logger.info(f"Building SAM2 base model from {config.SAM2_CONFIG_PATH} and {config.SAM2_CHECKPOINT_PATH}...")
-        sam2_model = build_sam2(config.SAM2_CONFIG_PATH, config.SAM2_CHECKPOINT_PATH, device=config.DEVICE)
-        logger.info("Initializing SAM2ImagePredictor...")
-        _sam2_predictor = SAM2ImagePredictor(sam2_model)
-        logger.info(f"SAM2 predictor loaded successfully on device: {config.DEVICE}")
-        if config.DEVICE.type == "mps":
-             logger.warning( # Use logger instead of print
-                "Support for MPS devices is preliminary for SAM2. "
-                "It might give numerically different outputs and sometimes degraded performance."
-            )
-        return True
-    except Exception as e:
-        logger.error(f"Error loading SAM2 model: {e}", exc_info=True)
-        _sam2_predictor = None
-        return False
-
-def load_autolabel_models():
-    """Loads the Florence-2 and SAM-HQ models using paths from config."""
+def load_hq_sam_model():
+    """Loads the SAM-HQ model predictor and Florence-2 using paths from config."""
     global _florence_model, _florence_processor, _sam_hq_predictor
 
     # Check if already loaded
@@ -181,7 +135,7 @@ def load_autolabel_models():
 
     # Return True only if both critical models were intended and successfully loaded
     # Modify this logic based on which models are essential for the app to run
-    return florence_loaded and sam_hq_loaded
+    return sam_hq_loaded # Only care about SAM-HQ for segmentation tasks now
 
 def load_zoe_depth_model():
     """Loads the ZoeDepth model using config device."""
@@ -206,13 +160,12 @@ def load_zoe_depth_model():
 def load_all_models():
     """Loads all required models and initializes clients."""
     logger.info("--- Starting Model Loading ---")
-    sam2_ok = load_sam2_model()
-    autolabel_ok = load_autolabel_models()
+    hq_sam_ok = load_hq_sam_model() # Renamed function
     zoe_depth_ok = load_zoe_depth_model() # Load ZoeDepth
     openai_ok = initialize_openai_client() is not None
     logger.info("--- Model Loading Attempted ---")
-    logger.info(f"SAM2 Loaded: {sam2_ok}")
-    logger.info(f"Autolabel Models Loaded: {autolabel_ok}")
+    logger.info(f"HQ-SAM Loaded: {hq_sam_ok}") # Updated log
+    # Florence is loaded within load_hq_sam_model, log separately if needed
     logger.info(f"ZoeDepth Loaded: {zoe_depth_ok}") # Log ZoeDepth status
     logger.info(f"OpenAI Client Initialized: {openai_ok}")
     # Optionally, add checks here to see if critical models failed and raise an error
@@ -226,13 +179,6 @@ def get_openai_client() -> OpenAI | None:
     # if _openai_client is None:
     #     initialize_openai_client()
     return _openai_client
-
-def get_sam2_predictor() -> SAM2ImagePredictor | None:
-    """Returns the initialized SAM2 predictor."""
-    # Ensure initialization is attempted if not already done
-    # if _sam2_predictor is None:
-    #     load_sam2_model()
-    return _sam2_predictor
 
 def get_florence_model():
     """Returns the initialized Florence-2 model."""
