@@ -1,5 +1,5 @@
-import React, { MouseEvent } from 'react'; // Added MouseEvent
-import { Point, SavedMask, BoundingBox, MaskingMode } from '../../types/app.types'; // Added BoundingBox, MaskingMode
+import React, { MouseEvent } from 'react';
+import { Point, SavedMask, BoundingBox, MaskingMode } from '../../types/app.types';
 import { MaskList } from '../MaskList/MaskList';
 
 interface MaskingSectionProps {
@@ -77,22 +77,20 @@ export function MaskingSection({
         <button
           onClick={() => setMaskingMode('point')}
           disabled={isLoading}
-          className={`px-3 py-1 rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 ${
-            maskingMode === 'point'
-              ? 'bg-blue-600 text-white focus:ring-blue-500'
-              : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-500 focus:ring-gray-400'
-          }`}
+          className={`px-3 py-1 rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 ${maskingMode === 'point'
+            ? 'bg-blue-600 text-white focus:ring-blue-500'
+            : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-500 focus:ring-gray-400'
+            }`}
         >
           Select Points
         </button>
         <button
           onClick={() => setMaskingMode('box')}
           disabled={isLoading}
-          className={`px-3 py-1 rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 ${
-            maskingMode === 'box'
-              ? 'bg-blue-600 text-white focus:ring-blue-500'
-              : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-500 focus:ring-gray-400'
-          }`}
+          className={`px-3 py-1 rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 ${maskingMode === 'box'
+            ? 'bg-blue-600 text-white focus:ring-blue-500'
+            : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-500 focus:ring-gray-400'
+            }`}
         >
           Draw Box
         </button>
@@ -103,9 +101,9 @@ export function MaskingSection({
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Click on the image to place points for manual mask prediction.</p>
       )}
       {maskingMode === 'box' && (
-         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Click and drag on the image to draw a bounding box for mask prediction.</p>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Click and drag on the image to draw a bounding box for mask prediction.</p>
       )}
-       <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Alternatively, use 'Generate Masks Automatically' to detect objects.</p>
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Alternatively, use 'Generate Masks Automatically' to detect objects.</p>
 
 
       {/* Canvas Area for Masking */}
@@ -141,12 +139,12 @@ export function MaskingSection({
         </div>
       )}
       {maskingMode === 'box' && selectedBox && (
-         <div className="mb-3 p-2 bg-green-50 dark:bg-gray-700 border border-green-200 dark:border-green-800 rounded text-sm">
-           <p className="text-green-800 dark:text-green-200">
-             Box selected: [{selectedBox.map(c => Math.round(c)).join(', ')}]. Ready to predict.
-           </p>
-         </div>
-       )}
+        <div className="mb-3 p-2 bg-green-50 dark:bg-gray-700 border border-green-200 dark:border-green-800 rounded text-sm">
+          <p className="text-green-800 dark:text-green-200">
+            Box selected: [{selectedBox.map(c => Math.round(c)).join(', ')}]. Ready to predict.
+          </p>
+        </div>
+      )}
 
       {/* Masking Buttons */}
       <div className="flex flex-wrap justify-start gap-2 mb-4">
@@ -172,7 +170,7 @@ export function MaskingSection({
         </button>
         {/* Reset Button (Points or Box) */}
         <button
-          onClick={handleResetCurrentPoints} // This handler now clears points OR box
+          onClick={handleResetCurrentPoints} // This handler clears points OR box
           disabled={isLoading || (maskingMode === 'point' && points.length === 0) || (maskingMode === 'box' && !selectedBox)}
           className="px-4 py-2 bg-yellow-500 text-white text-sm font-semibold rounded-lg shadow hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed"
           title={maskingMode === 'point' ? "Clear selected points" : "Clear selected box"}

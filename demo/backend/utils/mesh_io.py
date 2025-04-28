@@ -1,5 +1,5 @@
 import os
-from stl import mesh # Add import for STL mesh operations
+from stl import mesh # Import for STL mesh operations
 import numpy as np # Although not directly used, often needed alongside mesh data
 
 def write_ply(filename, vertices, faces, vertex_colors=None):

@@ -13,9 +13,9 @@ export function ResultSection({ result, isLoading, onStartOver }: ResultSectionP
     // This section should ideally only be rendered when there's a result,
     // but we can add a fallback just in case.
     return (
-        <div className="flex-grow flex items-center justify-center bg-gray-200 dark:bg-gray-800 rounded-md text-center p-4">
-            <p className="text-gray-500 dark:text-gray-400">Waiting for generation result...</p>
-        </div>
+      <div className="flex-grow flex items-center justify-center bg-gray-200 dark:bg-gray-800 rounded-md text-center p-4">
+        <p className="text-gray-500 dark:text-gray-400">Waiting for generation result...</p>
+      </div>
     );
   }
 
@@ -35,7 +35,7 @@ export function ResultSection({ result, isLoading, onStartOver }: ResultSectionP
           </svg>
           Download Model ({fileType.toUpperCase()})
         </a>
-        {/* Add Heightmap Download Button */}
+        {/* Heightmap Download Button */}
         {heightmapUrl && (
           <a
             href={heightmapUrl}

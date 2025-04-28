@@ -45,11 +45,11 @@ export function ModelViewer({ fileUrl, fileType }: ModelViewerProps) {
       (loadedGeom) => { // Rename to avoid conflict with state variable
         console.log(`${fileType.toUpperCase()} model loaded successfully.`); // Debug log
 
-        // Ensure we have BufferGeometry - loaders should provide this directly now
+        // Ensure we have BufferGeometry - loaders should provide this directly
         if (!(loadedGeom instanceof THREE.BufferGeometry)) {
-            console.error("Loaded geometry is not an instance of THREE.BufferGeometry!");
-            setLoadingError("Failed to process loaded 3D model data (unexpected format).");
-            return;
+          console.error("Loaded geometry is not an instance of THREE.BufferGeometry!");
+          setLoadingError("Failed to process loaded 3D model data (unexpected format).");
+          return;
         }
 
         const bufferGeom = loadedGeom; // Assign directly
@@ -120,7 +120,7 @@ export function ModelViewer({ fileUrl, fileType }: ModelViewerProps) {
           <meshStandardMaterial color="#cccccc" roughness={0.6} metalness={0.2} />
         )}
       </mesh>
-      {/* Optional: Add a ground plane */}
+      {/* TODO: Add a ground plane */}
       {/* <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -geometry?.boundingBox?.min?.y || -50, 0]} receiveShadow>
             <planeGeometry args={[500, 500]} />
             <shadowMaterial opacity={0.3} />

@@ -51,7 +51,7 @@ def initialize_openai_client():
     else:
         try:
             _openai_client = OpenAI(api_key=config.OPENAI_API_KEY)
-            # Optional: Test connection (add error handling if needed)
+            # TODO: Test connection (add error handling if needed)
             # _openai_client.models.list()
             logger.info("OpenAI client initialized successfully.")
         except Exception as e:
@@ -135,7 +135,7 @@ def load_hq_sam_model():
 
     # Return True only if both critical models were intended and successfully loaded
     # Modify this logic based on which models are essential for the app to run
-    return sam_hq_loaded # Only care about SAM-HQ for segmentation tasks now
+    return sam_hq_loaded # Only care about SAM-HQ for segmentation tasks
 
 def load_zoe_depth_model():
     """Loads the ZoeDepth model using config device."""
@@ -168,7 +168,7 @@ def load_all_models():
     # Florence is loaded within load_hq_sam_model, log separately if needed
     logger.info(f"ZoeDepth Loaded: {zoe_depth_ok}") # Log ZoeDepth status
     logger.info(f"OpenAI Client Initialized: {openai_ok}")
-    # Optionally, add checks here to see if critical models failed and raise an error
+    # TODO: add checks here to see if critical models failed and raise an error
 
 
 # --- Accessor Functions ---

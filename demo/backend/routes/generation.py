@@ -49,7 +49,7 @@ def generate_and_save_image(prompt: str, upload_folder: str) -> tuple[str | None
         logger.info(f"Received image URL: {image_url}")
 
         # Download the image
-        image_response = requests.get(image_url, stream=True, timeout=60) # Added timeout
+        image_response = requests.get(image_url, stream=True, timeout=60)
         image_response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
 
         # Create a unique filename

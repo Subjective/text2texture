@@ -7,8 +7,8 @@ interface MaskListProps {
   onToggleActive: (id: string) => void;
   onDelete: (id: string) => void;
   onRename: (id: string, newName: string) => void;
-  onClearAll: () => void; // Add handler for clearing all masks
-  onDownloadActive: () => void; // Add handler for downloading active masks
+  onClearAll: () => void; // Handler for clearing all masks
+  onDownloadActive: () => void; // Handler for downloading active masks
 }
 
 export function MaskList({

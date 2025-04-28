@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback, MouseEvent } from 'react'; // Added MouseEvent
+import { useState, useEffect, useRef, useCallback, MouseEvent } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Point, SavedMask, BoundingBox } from '../types/app.types'; // Added BoundingBox
-import { predictMaskFromPrompt, generateMasksAutomatically } from '../services/api'; // Renamed predictMaskFromPoints
+import { Point, SavedMask, BoundingBox } from '../types/app.types';
+import { predictMaskFromPrompt, generateMasksAutomatically } from '../services/api';
 
 export type MaskingMode = 'point' | 'box';
 
@@ -40,36 +40,36 @@ export interface UseMaskingReturn {
 
 // Helper to convert canvas event coords to original image coords
 const getCoordsFromEvent = (
-    event: MouseEvent<HTMLCanvasElement>,
-    canvas: HTMLCanvasElement,
-    img: HTMLImageElement | null
+  event: MouseEvent<HTMLCanvasElement>,
+  canvas: HTMLCanvasElement,
+  img: HTMLImageElement | null
 ): Point | null => {
-    if (!img || img.naturalWidth === 0) return null;
+  if (!img || img.naturalWidth === 0) return null;
 
-    const rect = canvas.getBoundingClientRect();
-    const clickX = event.clientX - rect.left;
-    const clickY = event.clientY - rect.top;
+  const rect = canvas.getBoundingClientRect();
+  const clickX = event.clientX - rect.left;
+  const clickY = event.clientY - rect.top;
 
-    const canvasWidth = canvas.width;
-    const canvasHeight = canvas.height;
-    const imgWidth = img.naturalWidth;
-    const imgHeight = img.naturalHeight;
-    const scale = Math.min(canvasWidth / imgWidth, canvasHeight / imgHeight);
-    const scaledWidth = imgWidth * scale;
-    const scaledHeight = imgHeight * scale;
-    const offsetX = (canvasWidth - scaledWidth) / 2;
-    const offsetY = (canvasHeight - scaledHeight) / 2;
+  const canvasWidth = canvas.width;
+  const canvasHeight = canvas.height;
+  const imgWidth = img.naturalWidth;
+  const imgHeight = img.naturalHeight;
+  const scale = Math.min(canvasWidth / imgWidth, canvasHeight / imgHeight);
+  const scaledWidth = imgWidth * scale;
+  const scaledHeight = imgHeight * scale;
+  const offsetX = (canvasWidth - scaledWidth) / 2;
+  const offsetY = (canvasHeight - scaledHeight) / 2;
 
-    // Check if click is within image bounds
-    if (clickX < offsetX || clickX > offsetX + scaledWidth || clickY < offsetY || clickY > offsetY + scaledHeight) {
-        return null; // Click outside image
-    }
+  // Check if click is within image bounds
+  if (clickX < offsetX || clickX > offsetX + scaledWidth || clickY < offsetY || clickY > offsetY + scaledHeight) {
+    return null; // Click outside image
+  }
 
-    // Convert canvas click coordinates back to *original* image coordinates
-    const originalX = (clickX - offsetX) / scale;
-    const originalY = (clickY - offsetY) / scale;
+  // Convert canvas click coordinates back to *original* image coordinates
+  const originalX = (clickX - offsetX) / scale;
+  const originalY = (clickY - offsetY) / scale;
 
-    return { x: originalX, y: originalY };
+  return { x: originalX, y: originalY };
 };
 
 
@@ -94,14 +94,14 @@ export function useMasking(): UseMaskingReturn {
   }, []);
 
   const setMaskingMode = useCallback((mode: MaskingMode) => {
-      setMaskingModeInternal(mode);
-      // Clear interactive elements when switching modes
-      setPoints([]);
-      setSelectedBox(null);
-      setCurrentBox(null);
-      setIsDrawingBox(false);
-      setStartPoint(null);
-      clearMaskingError();
+    setMaskingModeInternal(mode);
+    // Clear interactive elements when switching modes
+    setPoints([]);
+    setSelectedBox(null);
+    setCurrentBox(null);
+    setIsDrawingBox(false);
+    setStartPoint(null);
+    clearMaskingError();
   }, [clearMaskingError]);
 
   // --- Mask Image Loading Effect ---
@@ -169,8 +169,8 @@ export function useMasking(): UseMaskingReturn {
 
     // Helper to convert image coords to canvas coords
     const toCanvasCoords = (imgX: number, imgY: number): Point => ({
-        x: offsetX + imgX * scale,
-        y: offsetY + imgY * scale,
+      x: offsetX + imgX * scale,
+      y: offsetY + imgY * scale,
     });
 
     // 1. Draw the main image
@@ -187,38 +187,38 @@ export function useMasking(): UseMaskingReturn {
 
     // 3. Draw interaction elements based on mode
     if (maskingMode === 'point') {
-        // Draw the *current* points being selected
-        ctx.fillStyle = 'rgba(0, 255, 255, 0.9)'; // Cyan points
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)'; // Black outline
-        ctx.lineWidth = 1.5;
-        points.forEach(point => {
-          const canvasPoint = toCanvasCoords(point.x, point.y);
-          ctx.beginPath();
-          ctx.arc(canvasPoint.x, canvasPoint.y, 5, 0, 2 * Math.PI); // Point radius
-          ctx.fill();
-          ctx.stroke();
-        });
+      // Draw the *current* points being selected
+      ctx.fillStyle = 'rgba(0, 255, 255, 0.9)'; // Cyan points
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)'; // Black outline
+      ctx.lineWidth = 1.5;
+      points.forEach(point => {
+        const canvasPoint = toCanvasCoords(point.x, point.y);
+        ctx.beginPath();
+        ctx.arc(canvasPoint.x, canvasPoint.y, 5, 0, 2 * Math.PI); // Point radius
+        ctx.fill();
+        ctx.stroke();
+      });
     } else if (maskingMode === 'box') {
-        // Draw the box being drawn (currentBox)
-        if (currentBox) {
-            const [x1, y1, x2, y2] = currentBox;
-            const startCanvas = toCanvasCoords(x1, y1);
-            const endCanvas = toCanvasCoords(x2, y2);
-            ctx.strokeStyle = 'rgba(255, 255, 0, 0.9)'; // Yellow dashed line
-            ctx.lineWidth = 2;
-            ctx.setLineDash([5, 5]);
-            ctx.strokeRect(startCanvas.x, startCanvas.y, endCanvas.x - startCanvas.x, endCanvas.y - startCanvas.y);
-            ctx.setLineDash([]); // Reset line dash
-        }
-        // Draw the finalized selected box
-        if (selectedBox) {
-            const [x1, y1, x2, y2] = selectedBox;
-            const startCanvas = toCanvasCoords(x1, y1);
-            const endCanvas = toCanvasCoords(x2, y2);
-            ctx.strokeStyle = 'rgba(0, 255, 0, 0.9)'; // Green solid line
-            ctx.lineWidth = 2;
-            ctx.strokeRect(startCanvas.x, startCanvas.y, endCanvas.x - startCanvas.x, endCanvas.y - startCanvas.y);
-        }
+      // Draw the box being drawn (currentBox)
+      if (currentBox) {
+        const [x1, y1, x2, y2] = currentBox;
+        const startCanvas = toCanvasCoords(x1, y1);
+        const endCanvas = toCanvasCoords(x2, y2);
+        ctx.strokeStyle = 'rgba(255, 255, 0, 0.9)'; // Yellow dashed line
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.strokeRect(startCanvas.x, startCanvas.y, endCanvas.x - startCanvas.x, endCanvas.y - startCanvas.y);
+        ctx.setLineDash([]); // Reset line dash
+      }
+      // Draw the finalized selected box
+      if (selectedBox) {
+        const [x1, y1, x2, y2] = selectedBox;
+        const startCanvas = toCanvasCoords(x1, y1);
+        const endCanvas = toCanvasCoords(x2, y2);
+        ctx.strokeStyle = 'rgba(0, 255, 0, 0.9)'; // Green solid line
+        ctx.lineWidth = 2;
+        ctx.strokeRect(startCanvas.x, startCanvas.y, endCanvas.x - startCanvas.x, endCanvas.y - startCanvas.y);
+      }
     }
 
   }, [points, savedMasks, maskingMode, currentBox, selectedBox]); // Dependencies
@@ -262,9 +262,9 @@ export function useMasking(): UseMaskingReturn {
       // Initial draw needs slight delay to ensure layout/image is ready
       const initialDrawTimeout = setTimeout(drawCanvas, 50);
       return () => {
-          clearTimeout(initialDrawTimeout);
-          if (animationFrameId) cancelAnimationFrame(animationFrameId);
-          resizeObserver.unobserve(parentElement);
+        clearTimeout(initialDrawTimeout);
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        resizeObserver.unobserve(parentElement);
       };
     }
 
@@ -276,90 +276,90 @@ export function useMasking(): UseMaskingReturn {
 
   // --- Canvas Interaction Handlers ---
   const handleMouseDown = useCallback((event: MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
-      const img = imageRef.current;
-      if (maskingMode === 'point') {
-          // Handle point click directly on mouse down for simplicity
-          handleCanvasClick(event);
-          return;
-      }
-      // Box mode logic
-      if (!canvas || !img) return;
-      const coords = getCoordsFromEvent(event, canvas, img);
-      if (coords) {
-          setIsDrawingBox(true);
-          setStartPoint(coords);
-          setCurrentBox(null); // Clear previous drawing box
-          setSelectedBox(null); // Clear previous selection
-          clearMaskingError();
-      }
+    const canvas = canvasRef.current;
+    const img = imageRef.current;
+    if (maskingMode === 'point') {
+      // Handle point click directly on mouse down for simplicity
+      handleCanvasClick(event);
+      return;
+    }
+    // Box mode logic
+    if (!canvas || !img) return;
+    const coords = getCoordsFromEvent(event, canvas, img);
+    if (coords) {
+      setIsDrawingBox(true);
+      setStartPoint(coords);
+      setCurrentBox(null); // Clear previous drawing box
+      setSelectedBox(null); // Clear previous selection
+      clearMaskingError();
+    }
   }, [maskingMode, clearMaskingError]); // Removed handleCanvasClick dependency
 
   const handleMouseMove = useCallback((event: MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
-      const img = imageRef.current;
-      if (maskingMode !== 'box' || !isDrawingBox || !startPoint || !canvas || !img) return;
+    const canvas = canvasRef.current;
+    const img = imageRef.current;
+    if (maskingMode !== 'box' || !isDrawingBox || !startPoint || !canvas || !img) return;
 
-      const currentCoords = getCoordsFromEvent(event, canvas, img);
-      if (currentCoords) {
-          // Ensure x1 < x2 and y1 < y2 for drawing rect
-          const x1 = Math.min(startPoint.x, currentCoords.x);
-          const y1 = Math.min(startPoint.y, currentCoords.y);
-          const x2 = Math.max(startPoint.x, currentCoords.x);
-          const y2 = Math.max(startPoint.y, currentCoords.y);
-          setCurrentBox([x1, y1, x2, y2]);
-      }
+    const currentCoords = getCoordsFromEvent(event, canvas, img);
+    if (currentCoords) {
+      // Ensure x1 < x2 and y1 < y2 for drawing rect
+      const x1 = Math.min(startPoint.x, currentCoords.x);
+      const y1 = Math.min(startPoint.y, currentCoords.y);
+      const x2 = Math.max(startPoint.x, currentCoords.x);
+      const y2 = Math.max(startPoint.y, currentCoords.y);
+      setCurrentBox([x1, y1, x2, y2]);
+    }
   }, [maskingMode, isDrawingBox, startPoint]);
 
   const handleMouseUp = useCallback((event: MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
-      const img = imageRef.current;
-      // Only process if we were drawing a box
-      if (maskingMode !== 'box' || !isDrawingBox || !startPoint || !canvas || !img) {
-          setIsDrawingBox(false); // Ensure drawing state is reset even if conditions not met
-          setStartPoint(null);
-          return;
-      }
-
-      const finalCoords = getCoordsFromEvent(event, canvas, img);
-      if (finalCoords) {
-          // Ensure x1 < x2 and y1 < y2 for the final box
-          const x1 = Math.min(startPoint.x, finalCoords.x);
-          const y1 = Math.min(startPoint.y, finalCoords.y);
-          const x2 = Math.max(startPoint.x, finalCoords.x);
-          const y2 = Math.max(startPoint.y, finalCoords.y);
-
-          // Prevent tiny boxes (optional threshold)
-          if (Math.abs(x2 - x1) > 5 && Math.abs(y2 - y1) > 5) {
-              setSelectedBox([x1, y1, x2, y2]);
-          } else {
-              setSelectedBox(null); // Box too small
-              console.log("Selected box too small, clearing selection.");
-          }
-      } else {
-          setSelectedBox(null); // Mouse up outside image
-          console.log("Mouse up outside image, clearing selection.");
-      }
-
-      setIsDrawingBox(false);
+    const canvas = canvasRef.current;
+    const img = imageRef.current;
+    // Only process if we were drawing a box
+    if (maskingMode !== 'box' || !isDrawingBox || !startPoint || !canvas || !img) {
+      setIsDrawingBox(false); // Ensure drawing state is reset even if conditions not met
       setStartPoint(null);
-      setCurrentBox(null); // Clear the drawing feedback box
+      return;
+    }
+
+    const finalCoords = getCoordsFromEvent(event, canvas, img);
+    if (finalCoords) {
+      // Ensure x1 < x2 and y1 < y2 for the final box
+      const x1 = Math.min(startPoint.x, finalCoords.x);
+      const y1 = Math.min(startPoint.y, finalCoords.y);
+      const x2 = Math.max(startPoint.x, finalCoords.x);
+      const y2 = Math.max(startPoint.y, finalCoords.y);
+
+      // Prevent tiny boxes (optional threshold)
+      if (Math.abs(x2 - x1) > 5 && Math.abs(y2 - y1) > 5) {
+        setSelectedBox([x1, y1, x2, y2]);
+      } else {
+        setSelectedBox(null); // Box too small
+        console.log("Selected box too small, clearing selection.");
+      }
+    } else {
+      setSelectedBox(null); // Mouse up outside image
+      console.log("Mouse up outside image, clearing selection.");
+    }
+
+    setIsDrawingBox(false);
+    setStartPoint(null);
+    setCurrentBox(null); // Clear the drawing feedback box
   }, [maskingMode, isDrawingBox, startPoint]);
 
   // Internal handler for point clicks (called from handleMouseDown)
   const handleCanvasClick = useCallback((event: MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
-      const img = imageRef.current;
-      const isLoading = isLoadingMask || isLoadingAutoMask;
+    const canvas = canvasRef.current;
+    const img = imageRef.current;
+    const isLoading = isLoadingMask || isLoadingAutoMask;
 
-      // This function is only for adding points, called by handleMouseDown in point mode
-      if (isLoading || !canvas || !img) return;
+    // This function is only for adding points, called by handleMouseDown in point mode
+    if (isLoading || !canvas || !img) return;
 
-      const coords = getCoordsFromEvent(event, canvas, img);
-      if (coords) {
-          setPoints(prevPoints => [...prevPoints, coords]);
-          clearMaskingError();
-      }
+    const coords = getCoordsFromEvent(event, canvas, img);
+    if (coords) {
+      setPoints(prevPoints => [...prevPoints, coords]);
+      clearMaskingError();
+    }
   }, [isLoadingMask, isLoadingAutoMask, clearMaskingError]);
 
 
@@ -376,21 +376,21 @@ export function useMasking(): UseMaskingReturn {
     let namePrefix = "Mask";
 
     if (maskingMode === 'point') {
-        if (points.length === 0) {
-            setMaskingError("Please select at least one point to predict a mask.");
-            return;
-        }
-        predictionPayload.points = points;
-        canPredict = true;
-        namePrefix = `Point Mask ${savedMasks.length + 1}`;
+      if (points.length === 0) {
+        setMaskingError("Please select at least one point to predict a mask.");
+        return;
+      }
+      predictionPayload.points = points;
+      canPredict = true;
+      namePrefix = `Point Mask ${savedMasks.length + 1}`;
     } else if (maskingMode === 'box') {
-        if (!selectedBox) {
-            setMaskingError("Please draw a bounding box to predict a mask.");
-            return;
-        }
-        predictionPayload.box = selectedBox;
-        canPredict = true;
-        namePrefix = `Box Mask ${savedMasks.length + 1}`;
+      if (!selectedBox) {
+        setMaskingError("Please draw a bounding box to predict a mask.");
+        return;
+      }
+      predictionPayload.box = selectedBox;
+      canPredict = true;
+      namePrefix = `Box Mask ${savedMasks.length + 1}`;
     }
 
     if (!canPredict) return; // Should not happen if checks above are correct
@@ -416,9 +416,9 @@ export function useMasking(): UseMaskingReturn {
 
       // Clear the prompt used for this prediction
       if (maskingMode === 'point') {
-          setPoints([]);
+        setPoints([]);
       } else {
-          setSelectedBox(null);
+        setSelectedBox(null);
       }
       console.log(`Saved new mask ${newMask.id} from ${maskingMode} prompt`);
 
@@ -490,7 +490,7 @@ export function useMasking(): UseMaskingReturn {
     setSavedMasks(prevMasks => prevMasks.filter(mask => mask.id !== id));
   }, []);
 
-  const handleResetCurrentPoints = useCallback(() => { // Now resets points OR box selection
+  const handleResetCurrentPoints = useCallback(() => { // Resets points OR box selection
     setPoints([]);
     setSelectedBox(null);
     setCurrentBox(null);
@@ -527,10 +527,10 @@ export function useMasking(): UseMaskingReturn {
   }, [savedMasks, clearMaskingError]);
 
   // Effect to draw canvas whenever dependencies change
-   useEffect(() => {
-       // Debounce or throttle drawing if performance becomes an issue
-       drawCanvas();
-   }, [drawCanvas, points, savedMasks]); // Redraw when points or masks change
+  useEffect(() => {
+    // Debounce or throttle drawing if performance becomes an issue
+    drawCanvas();
+  }, [drawCanvas, points, savedMasks]); // Redraw when points or masks change
 
 
   return {

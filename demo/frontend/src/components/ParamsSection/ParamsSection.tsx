@@ -95,7 +95,7 @@ export function ParamsSection({
           </fieldset>
 
           {/* Invert Checkbox */}
-          <div className="flex items-center pt-5"> {/* Added pt-5 for alignment */}
+          <div className="flex items-center pt-5">
             <input
               id="invert" type="checkbox" checked={params.invert} onChange={(e) => params.setInvert(e.target.checked)}
               className="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"
@@ -105,7 +105,7 @@ export function ParamsSection({
           </div>
 
           {/* Include Color Checkbox */}
-          <div className="flex items-center pt-5"> {/* Added pt-5 for alignment */}
+          <div className="flex items-center pt-5">
             <input
               id="includeColor" type="checkbox" checked={params.includeColor} onChange={(e) => params.setIncludeColor(e.target.checked)}
               className="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"

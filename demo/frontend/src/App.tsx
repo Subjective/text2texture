@@ -26,9 +26,9 @@ function App() {
   const masking = useMasking();
   const modelParams = useModelParams();
   const modelGeneration = useModelGeneration();
-const [inputSectionKey, setInputSectionKey] = useState<number>(1); // Key for resetting InputSection
+  const [inputSectionKey, setInputSectionKey] = useState<number>(1); // Key for resetting InputSection
 
-// --- Hook Coordination & Effects ---
+  // --- Hook Coordination & Effects ---
 
   // Update combined loading state in workflow hook
   useEffect(() => {
@@ -106,34 +106,34 @@ const [inputSectionKey, setInputSectionKey] = useState<number>(1); // Key for re
     if (result) {
       workflow.setCurrentStep("result");
     } else {
-        // If generation fails, move back from 'generating' state
-        // (Error handling itself is done via useEffect)
-        workflow.setCurrentStep("params"); // Or wherever appropriate on failure
+      // If generation fails, move back from 'generating' state
+      // (Error handling itself is done via useEffect)
+      workflow.setCurrentStep("params"); // Or wherever appropriate on failure
     }
     // Error handling via useEffect
   }, [
-      modelParams,
-      masking.savedMasks,
-      imageInput.imageFile,
-      modelGeneration.handleGenerate3DModel,
-      workflow.setCurrentStep
-   ]);
- 
-   // Handle file selection and step transition
-   const handleFileSelected = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-       const success = await imageInput.handleFileChange(event);
-       if (success) {
-           masking.handleClearSavedMasks(); // Clear old masks when new image is loaded
-           workflow.setCurrentStep("masking");
-       }
-       // Error handling is done via the useEffect watching imageInput.imageError
-   }, [imageInput.handleFileChange, masking.handleClearSavedMasks, workflow.setCurrentStep]);
- 
- 
-   // Handle navigation actions
-   // goToMasking is no longer needed here
- 
-   const goToParams = useCallback(() => {
+    modelParams,
+    masking.savedMasks,
+    imageInput.imageFile,
+    modelGeneration.handleGenerate3DModel,
+    workflow.setCurrentStep
+  ]);
+
+  // Handle file selection and step transition
+  const handleFileSelected = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const success = await imageInput.handleFileChange(event);
+    if (success) {
+      masking.handleClearSavedMasks(); // Clear old masks when new image is loaded
+      workflow.setCurrentStep("masking");
+    }
+    // Error handling is done via the useEffect watching imageInput.imageError
+  }, [imageInput.handleFileChange, masking.handleClearSavedMasks, workflow.setCurrentStep]);
+
+
+  // Handle navigation actions
+  // goToMasking is no longer needed here
+
+  const goToParams = useCallback(() => {
     if (!imageInput.imageSrc) {
       workflow.setError("Cannot proceed without an image.");
       workflow.setCurrentStep("input");
@@ -161,8 +161,8 @@ const [inputSectionKey, setInputSectionKey] = useState<number>(1); // Key for re
 
   // Handle input method change (includes reset logic)
   const handleInputMethodChange = useCallback((method: typeof imageInput.inputMethod) => {
-      handleStartOver(); // Reset everything when switching method
-      imageInput.setInputMethod(method);
+    handleStartOver(); // Reset everything when switching method
+    imageInput.setInputMethod(method);
   }, [handleStartOver, imageInput.setInputMethod]);
 
 
@@ -181,14 +181,14 @@ const [inputSectionKey, setInputSectionKey] = useState<number>(1); // Key for re
       <ErrorMessage error={workflow.error} onDismiss={workflow.clearError} />
 
       {/* Main Content Grid */}
-      <main className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 mt-4"> {/* Added mt-4 */}
+      <main className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 mt-4">
 
         {/* Left Column: Input, Masking, Parameters */}
         <div className="space-y-6 md:space-y-8">
 
           {/* Step 1: Input */}
           <InputSection
-            key={inputSectionKey} // Add key here
+            key={inputSectionKey}
             inputMethod={imageInput.inputMethod}
             textPrompt={imageInput.textPrompt}
             isLoading={workflow.isLoading}
@@ -242,14 +242,14 @@ const [inputSectionKey, setInputSectionKey] = useState<number>(1); // Key for re
 
           {/* Loading Indicator during Generation Steps */}
           {workflow.isLoading && workflow.currentStep === 'generating' && (
-             <LoadingIndicator
-                message={
-                    masking.isLoadingMask ? "Predicting mask..." :
-                    masking.isLoadingAutoMask ? "Generating masks..." :
+            <LoadingIndicator
+              message={
+                masking.isLoadingMask ? "Predicting mask..." :
+                  masking.isLoadingAutoMask ? "Generating masks..." :
                     imageInput.isLoadingImageGen ? "Generating image..." :
-                    modelGeneration.isLoadingModel ? "Generating 3D model..." : "Processing..."
-                }
-             />
+                      modelGeneration.isLoadingModel ? "Generating 3D model..." : "Processing..."
+              }
+            />
           )}
 
         </div> {/* End Left Column */}
@@ -290,9 +290,9 @@ const [inputSectionKey, setInputSectionKey] = useState<number>(1); // Key for re
               <div className="flex-grow flex items-center justify-center bg-gray-200 dark:bg-gray-800 rounded-md text-center p-4">
                 <p className="text-gray-500 dark:text-gray-400">
                   {workflow.currentStep === 'input' ? 'Upload or generate an image to begin.' :
-                   workflow.currentStep === 'masking' ? 'Select points and predict masks, or proceed to parameters.' :
-                   workflow.currentStep === 'params' ? 'Configure parameters and click "Generate 3D Model".' :
-                   '3D model preview will appear here.'}
+                    workflow.currentStep === 'masking' ? 'Select points and predict masks, or proceed to parameters.' :
+                      workflow.currentStep === 'params' ? 'Configure parameters and click "Generate 3D Model".' :
+                        '3D model preview will appear here.'}
                 </p>
               </div>
             )}

@@ -60,10 +60,10 @@ export const generateImageFromText = async (prompt: string): Promise<string> => 
   } catch (err) { // Use specific type checking instead of any
     console.error("API Error - generateImageFromText:", err);
     let errorMsg = "Failed to generate image from text.";
-     if (axios.isAxiosError(err)) {
-        errorMsg = err.response?.data?.error || err.response?.data?.message || err.message;
+    if (axios.isAxiosError(err)) {
+      errorMsg = err.response?.data?.error || err.response?.data?.message || err.message;
     } else if (err instanceof Error) {
-        errorMsg = err.message;
+      errorMsg = err.message;
     }
     throw new Error(errorMsg);
   }
@@ -79,7 +79,7 @@ export const generateImageFromText = async (prompt: string): Promise<string> => 
  * @throws Throws an error if the API call fails or returns an error status.
  */
 export const predictMaskFromPrompt = async (
-    payload: { image: string; points?: Point[]; box?: BoundingBox }
+  payload: { image: string; points?: Point[]; box?: BoundingBox }
 ): Promise<{ maskB64Png: string; score?: number }> => {
   try {
     // Ensure imageSrc is just the Base64 data for the API
@@ -87,22 +87,22 @@ export const predictMaskFromPrompt = async (
 
     // Construct the request body based on whether points or box is provided
     const requestBody: { image: string; points?: Point[]; box?: BoundingBox } = {
-        image: base64Image,
+      image: base64Image,
     };
     if (payload.points) {
-        requestBody.points = payload.points;
+      requestBody.points = payload.points;
     } else if (payload.box) {
-        requestBody.box = payload.box;
+      requestBody.box = payload.box;
     } else {
-        // This case should ideally be prevented by the calling hook, but good to handle defensively
-        throw new Error("Either points or box must be provided for mask prediction.");
+      // This case should ideally be prevented by the calling hook, but good to handle defensively
+      throw new Error("Either points or box must be provided for mask prediction.");
     }
 
     const response = await axios.post<PredictMaskResponse>(PREDICT_MASK_URL, requestBody);
 
     if (response.data && response.data.status === 'success' && response.data.mask_b64png) {
       if (typeof response.data.mask_b64png === 'string') {
-        // Assuming backend sends the full Data URI now, or adjust if needed
+        // Assuming backend sends the full Data URI
         return {
           maskB64Png: response.data.mask_b64png,
           score: response.data.score,
@@ -117,9 +117,9 @@ export const predictMaskFromPrompt = async (
     console.error("API Error - predictMaskFromPrompt:", err);
     let errorMsg = "An unknown error occurred during mask prediction.";
     if (axios.isAxiosError(err)) {
-        errorMsg = err.response?.data?.error || err.response?.data?.message || err.message;
+      errorMsg = err.response?.data?.error || err.response?.data?.message || err.message;
     } else if (err instanceof Error) {
-        errorMsg = err.message;
+      errorMsg = err.message;
     }
     throw new Error(errorMsg);
   }
@@ -148,9 +148,9 @@ export const generateMasksAutomatically = async (imageSrc: string): Promise<Auto
     console.error("API Error - generateMasksAutomatically:", err);
     let errorMsg = "An unknown error occurred during automatic mask generation.";
     if (axios.isAxiosError(err)) {
-        errorMsg = err.response?.data?.error || err.response?.data?.message || err.message;
+      errorMsg = err.response?.data?.error || err.response?.data?.message || err.message;
     } else if (err instanceof Error) {
-        errorMsg = err.message;
+      errorMsg = err.message;
     }
     throw new Error(errorMsg);
   }
@@ -166,83 +166,83 @@ export const generateMasksAutomatically = async (imageSrc: string): Promise<Auto
  * @throws Throws an error if the API call fails, returns an error, or mask processing fails.
  */
 export const generate3DModel = async (
-    imageFile: File,
-    activeMasks: SavedMask[],
-    params: {
-        blockWidth: number;
-        blockLength: number;
-        blockThickness: number;
-        depth: number;
-        baseHeight: number;
-        mode: "protrude" | "carve";
-        invert: boolean;
-        includeColor: boolean;
-    }
+  imageFile: File,
+  activeMasks: SavedMask[],
+  params: {
+    blockWidth: number;
+    blockLength: number;
+    blockThickness: number;
+    depth: number;
+    baseHeight: number;
+    mode: "protrude" | "carve";
+    invert: boolean;
+    includeColor: boolean;
+  }
 ): Promise<{ fileUrl: string; fileType: string; heightmapUrl: string | null }> => {
 
-    const formData = new FormData();
-    formData.append("color_image", imageFile); // Append the file object
+  const formData = new FormData();
+  formData.append("color_image", imageFile); // Append the file object
 
-    // Append Active Masks (Handle potential blob conversion errors)
-    try {
-        activeMasks.forEach((mask, index) => {
-            const blob = base64ToBlob(mask.maskB64Png, 'image/png');
-            const safeName = mask.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() || `mask_${index}`;
-            // Use a consistent naming scheme the backend expects, e.g., 'mask_0', 'mask_1'
-            formData.append(`mask_${index}`, blob, `${safeName}_${mask.id.substring(0, 6)}.png`);
-        });
-    } catch (e) { // Use specific type checking instead of any
-      console.error(`Failed to process mask for upload:`, e);
-      // Attempt to get maskName safely, assuming it might be added to the error object
-      let maskName = 'unknown';
-      if (e instanceof Error && typeof (e as unknown as Record<string, unknown>).maskName === 'string') {
-          maskName = (e as unknown as Record<string, unknown>).maskName as string;
-      }
-      const message = e instanceof Error ? e.message : String(e);
-      throw new Error(`Error processing mask "${maskName}" for upload: ${message}. Please try removing it or generating again.`);
+  // Append Active Masks (Handle potential blob conversion errors)
+  try {
+    activeMasks.forEach((mask, index) => {
+      const blob = base64ToBlob(mask.maskB64Png, 'image/png');
+      const safeName = mask.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() || `mask_${index}`;
+      // Use a consistent naming scheme the backend expects, e.g., 'mask_0', 'mask_1'
+      formData.append(`mask_${index}`, blob, `${safeName}_${mask.id.substring(0, 6)}.png`);
+    });
+  } catch (e) { // Use specific type checking instead of any
+    console.error(`Failed to process mask for upload:`, e);
+    // Attempt to get maskName safely, assuming it might be added to the error object
+    let maskName = 'unknown';
+    if (e instanceof Error && typeof (e as unknown as Record<string, unknown>).maskName === 'string') {
+      maskName = (e as unknown as Record<string, unknown>).maskName as string;
     }
+    const message = e instanceof Error ? e.message : String(e);
+    throw new Error(`Error processing mask "${maskName}" for upload: ${message}. Please try removing it or generating again.`);
+  }
 
 
-    // Append mask metadata
-    const maskMetadata = activeMasks.map(m => ({ id: m.id, name: m.name }));
-    formData.append("mask_metadata", JSON.stringify(maskMetadata));
+  // Append mask metadata
+  const maskMetadata = activeMasks.map(m => ({ id: m.id, name: m.name }));
+  formData.append("mask_metadata", JSON.stringify(maskMetadata));
 
-    // Append Model Parameters
-    formData.append("block_width", String(params.blockWidth));
-    formData.append("block_length", String(params.blockLength));
-    formData.append("block_thickness", String(params.blockThickness));
-    formData.append("depth", String(params.depth));
-    formData.append("base_height", String(params.baseHeight));
-    formData.append("mode", params.mode);
-    formData.append("invert", String(params.invert));
-    formData.append("include_color", String(params.includeColor));
+  // Append Model Parameters
+  formData.append("block_width", String(params.blockWidth));
+  formData.append("block_length", String(params.blockLength));
+  formData.append("block_thickness", String(params.blockThickness));
+  formData.append("depth", String(params.depth));
+  formData.append("base_height", String(params.baseHeight));
+  formData.append("mode", params.mode);
+  formData.append("invert", String(params.invert));
+  formData.append("include_color", String(params.includeColor));
 
-    try {
-        // Post to the final generation endpoint
-        const response = await axios.post<GenerateModelResponse>(GENERATE_MODEL_URL, formData, {
-            headers: {
-                // Content-Type: 'multipart/form-data' is set automatically by axios for FormData
-            },
-            timeout: 300000, // 5 minute timeout
-        });
+  try {
+    // Post to the final generation endpoint
+    const response = await axios.post<GenerateModelResponse>(GENERATE_MODEL_URL, formData, {
+      headers: {
+        // Content-Type: 'multipart/form-data' is set automatically by axios for FormData
+      },
+      timeout: 300000, // 5 minute timeout
+    });
 
-        if (response.data && response.data.fileUrl && response.data.fileType) {
-            return {
-                fileUrl: response.data.fileUrl,
-                fileType: response.data.fileType,
-                heightmapUrl: response.data.heightmapFileUrl || null, // Handle optional heightmap URL
-            };
-        } else {
-            throw new Error(response.data?.error || "Invalid response received from model generation endpoint.");
-        }
-    } catch (err) { // Use specific type checking instead of any
-      console.error("API Error - generate3DModel:", err);
-      let errorMsg = "An unexpected error occurred during 3D model generation.";
-       if (axios.isAxiosError(err)) {
-          errorMsg = err.response?.data?.error || err.response?.data?.message || err.message;
-      } else if (err instanceof Error) {
-          errorMsg = err.message;
-      }
-        throw new Error(errorMsg);
+    if (response.data && response.data.fileUrl && response.data.fileType) {
+      return {
+        fileUrl: response.data.fileUrl,
+        fileType: response.data.fileType,
+        heightmapUrl: response.data.heightmapFileUrl || null, // Handle optional heightmap URL
+      };
+    } else {
+      throw new Error(response.data?.error || "Invalid response received from model generation endpoint.");
     }
+  } catch (err) { // Use specific type checking instead of any
+    console.error("API Error - generate3DModel:", err);
+    let errorMsg = "An unexpected error occurred during 3D model generation.";
+    if (axios.isAxiosError(err)) {
+      errorMsg = err.response?.data?.error || err.response?.data?.message || err.message;
+    } else if (err instanceof Error) {
+      errorMsg = err.message;
+    }
+    throw new Error(errorMsg);
+  }
 };
