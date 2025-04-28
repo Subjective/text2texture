@@ -4,8 +4,8 @@
 set -e
 
 # Define URLs and target paths
-CHECKPOINT_URL="https://huggingface.co/lkeab/hq-sam/resolve/main/sam_hq_vit_l.pth"
-CHECKPOINT_TARGET="checkpoints/sam_hq_vit_l.pth"
+CHECKPOINT_URL="https://huggingface.co/lkeab/hq-sam/resolve/main/sam_hq_vit_h.pth"
+CHECKPOINT_TARGET="checkpoints/sam_hq_vit_h.pth"
 
 # Create directories if they don't exist
 mkdir -p checkpoints
