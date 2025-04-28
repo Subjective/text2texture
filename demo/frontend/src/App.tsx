@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 // Import Hooks
 import { useAppWorkflow } from './hooks/useAppWorkflow';
@@ -26,8 +26,9 @@ function App() {
   const masking = useMasking();
   const modelParams = useModelParams();
   const modelGeneration = useModelGeneration();
+const [inputSectionKey, setInputSectionKey] = useState<number>(1); // Key for resetting InputSection
 
-  // --- Hook Coordination & Effects ---
+// --- Hook Coordination & Effects ---
 
   // Update combined loading state in workflow hook
   useEffect(() => {
@@ -58,8 +59,8 @@ function App() {
       img.onload = () => {
         console.log(`Image loaded for masking: ${img.naturalWidth}x${img.naturalHeight}`);
         masking.imageRef.current = img;
-        // Trigger a redraw in masking hook if needed, though its own effects should handle it
-        // masking.drawCanvas(); // Re-evaluate if needed
+        // Explicitly trigger redraw now that the image ref is set
+        masking.drawCanvas();
       };
       img.onerror = () => {
         console.error("Failed to load image into Image object for masking.");
@@ -79,16 +80,22 @@ function App() {
 
   // Handle step transition after image generation
   const handleGenerateImage = useCallback(async () => {
+    workflow.setCurrentStep("generating"); // Set step before async call
     masking.handleClearSavedMasks(); // Clear old masks before generating new image
     const result = await imageInput.handleGenerateImageFromText();
     if (result.success) {
       workflow.setCurrentStep("masking");
+    } else {
+      // If generation fails, move back from 'generating' state
+      // (Error handling itself is done via useEffect)
+      workflow.setCurrentStep("input"); // Or wherever appropriate on failure
     }
     // Error handling is done via the useEffect watching imageInput.imageError
   }, [imageInput.handleGenerateImageFromText, masking.handleClearSavedMasks, workflow.setCurrentStep]);
 
   // Handle step transition after model generation
   const handleGenerateModel = useCallback(async () => {
+    workflow.setCurrentStep("generating"); // Set step before async call
     const params = modelParams.getParams();
     const activeMasks = masking.savedMasks.filter(m => m.isActive);
     const result = await modelGeneration.handleGenerate3DModel(
@@ -98,6 +105,10 @@ function App() {
     );
     if (result) {
       workflow.setCurrentStep("result");
+    } else {
+        // If generation fails, move back from 'generating' state
+        // (Error handling itself is done via useEffect)
+        workflow.setCurrentStep("params"); // Or wherever appropriate on failure
     }
     // Error handling via useEffect
   }, [
@@ -145,6 +156,7 @@ function App() {
     modelParams.setIncludeColor(false);
     modelGeneration.resetGenerationState();
     workflow.resetApp(); // Resets step, error, loading flags
+    setInputSectionKey(prevKey => prevKey + 1); // Increment key to force remount InputSection
   }, [imageInput, masking, modelParams, modelGeneration, workflow]);
 
   // Handle input method change (includes reset logic)
@@ -176,6 +188,7 @@ function App() {
 
           {/* Step 1: Input */}
           <InputSection
+            key={inputSectionKey} // Add key here
             inputMethod={imageInput.inputMethod}
             textPrompt={imageInput.textPrompt}
             isLoading={workflow.isLoading}

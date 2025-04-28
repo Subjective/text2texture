@@ -24,7 +24,7 @@ export interface UseMaskingReturn {
   handleDownloadActiveMasks: () => void;
   clearMaskingError: () => void;
   // Expose drawCanvas if needed externally, though resize effect handles most cases
-  // drawCanvas: () => void;
+  drawCanvas: () => void;
 }
 
 export function useMasking(): UseMaskingReturn {
@@ -369,6 +369,6 @@ export function useMasking(): UseMaskingReturn {
     handleClearSavedMasks,
     handleDownloadActiveMasks,
     clearMaskingError,
-    // drawCanvas, // Expose if needed
+    drawCanvas, // Expose drawCanvas
   };
 }

@@ -49,13 +49,13 @@ export function MaskingSection({
 
   // Don't render if no image is loaded yet
   if (!imageSrc) {
-      // Optionally return a placeholder or null
-      return (
-          <section id="masking-section" className="bg-white dark:bg-gray-800 p-4 md:p-6 rounded-lg shadow-md opacity-50">
-              <h2 className="text-xl md:text-2xl font-semibold mb-4 border-b pb-2 dark:border-gray-600">2. Select Masks (Optional)</h2>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Please upload or generate an image first.</p>
-          </section>
-      );
+    // Optionally return a placeholder or null
+    return (
+      <section id="masking-section" className="bg-white dark:bg-gray-800 p-4 md:p-6 rounded-lg shadow-md opacity-50">
+        <h2 className="text-xl md:text-2xl font-semibold mb-4 border-b pb-2 dark:border-gray-600">2. Select Masks (Optional)</h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400">Please upload or generate an image first.</p>
+      </section>
+    );
   }
 
   return (
@@ -104,7 +104,7 @@ export function MaskingSection({
           className="px-4 py-2 bg-purple-600 text-white text-sm font-semibold rounded-lg shadow hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed"
           title="Automatically detect objects and generate masks (replaces existing masks)"
         >
-          {isLoadingAutoMask ? 'Generating...' : 'Generate Masks Automatically'}
+          {isLoadingAutoMask ? 'Generating...' : 'Generate Masks'}
         </button>
         {/* Manual Point-based Prediction Button */}
         <button
@@ -113,7 +113,7 @@ export function MaskingSection({
           className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg shadow hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed"
           title="Predict a mask based on the currently selected points"
         >
-          {isLoadingMask ? 'Predicting...' : 'Predict & Save Mask'}
+          {isLoadingMask ? 'Predicting...' : 'Predict Mask'}
         </button>
         <button
           onClick={handleResetCurrentPoints}
