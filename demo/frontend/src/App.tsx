@@ -206,12 +206,17 @@ const [inputSectionKey, setInputSectionKey] = useState<number>(1); // Key for re
               canvasRef={masking.canvasRef}
               points={masking.points}
               savedMasks={masking.savedMasks}
-              imageSrc={imageInput.imageSrc} // Pass imageSrc here
+              selectedBox={masking.selectedBox} // Pass selectedBox
+              maskingMode={masking.maskingMode} // Pass maskingMode
+              imageSrc={imageInput.imageSrc}
               isLoading={workflow.isLoading}
               isLoadingMask={masking.isLoadingMask}
               isLoadingAutoMask={masking.isLoadingAutoMask}
-              handleCanvasClick={masking.handleCanvasClick}
-              getMaskFromBackend={masking.getMaskFromBackend}
+              setMaskingMode={masking.setMaskingMode} // Pass setMaskingMode
+              handleMouseDown={masking.handleMouseDown} // Pass handleMouseDown
+              handleMouseMove={masking.handleMouseMove} // Pass handleMouseMove
+              handleMouseUp={masking.handleMouseUp} // Pass handleMouseUp
+              triggerPrediction={masking.triggerPrediction} // Pass triggerPrediction
               // Pass imageSrc to the handler trigger
               handleGenerateMasksAutomatically={() => masking.handleGenerateMasksAutomatically(imageInput.imageSrc)}
               handleResetCurrentPoints={masking.handleResetCurrentPoints}

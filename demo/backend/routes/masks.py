@@ -7,7 +7,7 @@ from flask import Blueprint, jsonify, request
 # Import configuration, models, processing functions, and utilities
 import config
 import models
-from processing.segmentation import generate_masks_from_image, predict_mask_with_points # Import new function
+from processing.segmentation import generate_masks_from_image, predict_mask_with_prompt # Use renamed function
 from utils.image_utils import decode_base64_image, encode_mask_to_base64_png
 
 # Get logger
@@ -20,7 +20,7 @@ masks_bp = Blueprint('masks', __name__, url_prefix='/api')
 
 @masks_bp.route("/predict_mask", methods=["POST"])
 def api_predict_mask():
-    """API endpoint to predict mask based on image and points using SAM-HQ."""
+    """API endpoint to predict mask based on image and points/box using SAM-HQ."""
     sam_hq_predictor = models.get_sam_hq_predictor() # Get HQ-SAM predictor
     if sam_hq_predictor is None:
         logger.error("SAM-HQ model not loaded, cannot predict mask.")
@@ -30,38 +30,58 @@ def api_predict_mask():
     if not data: return jsonify({"status": "error", "message": "No input data provided"}), 400
 
     base64_image_str = data.get("image")
-    points_data = data.get("points")
+    points_data = data.get("points") # e.g., [{"x": 100, "y": 200}, ...]
+    box_data = data.get("box")       # e.g., [10, 20, 150, 180]
 
-    if not base64_image_str or not points_data:
-        return jsonify({"status": "error", "message": "Missing 'image' or 'points' in request"}), 400
-    if not isinstance(points_data, list) or len(points_data) == 0:
-        return jsonify({"status": "error", "message": "'points' must be a non-empty list of {x, y} objects"}), 400
+    if not base64_image_str:
+        return jsonify({"status": "error", "message": "Missing 'image' in request"}), 400
+    if points_data is None and box_data is None:
+         return jsonify({"status": "error", "message": "Missing 'points' or 'box' in request"}), 400
+    if points_data is not None and box_data is not None:
+         return jsonify({"status": "error", "message": "Provide either 'points' or 'box', not both"}), 400
 
     logger.info("Decoding image for mask prediction...")
     image_rgb = decode_base64_image(base64_image_str) # Use utility function
     if image_rgb is None: return jsonify({"status": "error", "message": "Invalid image data provided"}), 400
     logger.info(f"Image decoded successfully: shape={image_rgb.shape}")
 
-    try:
-        # Convert points from frontend format [{x: val, y: val}, ...] to list of tuples and list of labels
-        # Assuming all points are foreground points (label=1) for now
-        point_coords_list = [(p["x"], p["y"]) for p in points_data]
-        point_labels_list = [1] * len(point_coords_list) # All foreground points
-        logger.info(f"Processed {len(point_coords_list)} points.")
-    except (KeyError, TypeError, IndexError) as e:
-        logger.error(f"Invalid point format received: {e}", exc_info=True)
-        return jsonify({"status": "error", "message": f"Invalid point format: {e}"}), 400
+    # Prepare points or box arguments for the processing function
+    points_list = None
+    point_labels_list = None
+    box_list = None
+    prompt_type_log = ""
+
+    if points_data is not None:
+        prompt_type_log = "points"
+        if not isinstance(points_data, list) or len(points_data) == 0:
+            return jsonify({"status": "error", "message": "'points' must be a non-empty list of {x, y} objects"}), 400
+        try:
+            # Convert points from frontend format [{x: val, y: val}, ...] to list of tuples
+            # Assuming all points are foreground points (label=1) for now
+            points_list = [(p["x"], p["y"]) for p in points_data]
+            point_labels_list = [1] * len(points_list) # All foreground points
+            logger.info(f"Processed {len(points_list)} points.")
+        except (KeyError, TypeError, IndexError) as e:
+            logger.error(f"Invalid point format received: {e}", exc_info=True)
+            return jsonify({"status": "error", "message": f"Invalid point format: {e}"}), 400
+    elif box_data is not None:
+        prompt_type_log = "box"
+        if not isinstance(box_data, list) or len(box_data) != 4 or not all(isinstance(n, (int, float)) for n in box_data):
+             return jsonify({"status": "error", "message": "'box' must be a list of 4 numbers [x1, y1, x2, y2]"}), 400
+        box_list = [int(coord) for coord in box_data] # Ensure integer coordinates if needed by model/processing
+        logger.info(f"Processed box: {box_list}")
 
     # --- Run SAM-HQ Prediction ---
     try:
         # Use config for device and dtype
         with torch.autocast(device_type=config.DEVICE.type, dtype=config.AUTOCAST_DTYPE):
-            logger.info("Running SAM-HQ point prediction...")
-            # Call the new function from segmentation.py
-            masks_tensor, scores_tensor = predict_mask_with_points(
+            logger.info(f"Running SAM-HQ {prompt_type_log} prediction...")
+            # Call the updated function from segmentation.py
+            masks_tensor, scores_tensor = predict_mask_with_prompt(
                 image_rgb=image_rgb,
-                points=point_coords_list,
-                point_labels=point_labels_list,
+                points=points_list, # Will be None if using box
+                point_labels=point_labels_list, # Will be None if using box
+                box=box_list, # Will be None if using points
                 sam_predictor=sam_hq_predictor,
                 device=config.DEVICE,
                 multimask_output=False, # Get single best mask
@@ -87,7 +107,7 @@ def api_predict_mask():
             output_mask_bool = output_mask.astype(bool) # Ensure boolean type
             scores = scores_tensor # Use the scores tensor directly
     except Exception as e:
-        logger.error(f"Error during SAM-HQ point prediction: {e}", exc_info=True)
+        logger.error(f"Error during SAM-HQ {prompt_type_log} prediction: {e}", exc_info=True)
         return jsonify({"status": "error", "message": f"Mask prediction failed: {e}"}), 500
 
     # --- Encode Result Mask to Base64 PNG ---

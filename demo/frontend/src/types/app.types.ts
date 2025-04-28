@@ -1,10 +1,14 @@
-// src/types/app.types.ts
-
 // Basic Point type
 export type Point = {
   x: number;
   y: number;
 };
+
+// Bounding Box type [x1, y1, x2, y2]
+export type BoundingBox = [number, number, number, number];
+
+// Masking Interaction Mode
+export type MaskingMode = 'point' | 'box';
 
 // Structure for storing saved masks
 export type SavedMask = {

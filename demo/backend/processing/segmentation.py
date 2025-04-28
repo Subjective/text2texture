@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import cv2 # Using cv2 for image loading/saving, can use PIL as well
 from PIL import Image
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 
 # --- Model Imports (Requires 'pip install segment-anything-hq') ---
 # These imports are needed by the functions using the models
@@ -25,70 +25,94 @@ except Exception as e:
     # sys.exit(1)
 
 
-def predict_mask_with_points(
+def predict_mask_with_prompt( # Renamed function
     image_rgb: np.ndarray,
-    points: List[Tuple[int, int]],
-    point_labels: List[int], # 1 for foreground, 0 for background
     sam_predictor: SamPredictor, # Pass loaded predictor instance
     device: torch.device,
-    multimask_output: bool = False, # Typically False for point prompts unless multiple results are desired
+    points: Optional[List[Tuple[int, int]]] = None,
+    point_labels: Optional[List[int]] = None, # 1 for foreground, 0 for background
+    box: Optional[List[int]] = None, # Optional box parameter [x1, y1, x2, y2]
+    multimask_output: bool = False,
     hq_token_only: bool = False
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Predicts a segmentation mask using SAM-HQ based on input points.
+    Predicts a segmentation mask using SAM-HQ based on input points or a bounding box.
 
     Args:
         image_rgb: Input image as a NumPy array (H, W, 3) in RGB format.
-        points: List of (x, y) coordinates for the points.
-        point_labels: List of labels for each point (1 for foreground, 0 for background).
         sam_predictor: Pre-loaded SAM-HQ predictor instance.
         device: The torch device to run inference on.
-        multimask_output: Whether to return multiple masks (usually False for points).
+        points: List of (x, y) coordinates for the points. Provide either points or box.
+        point_labels: List of labels for each point (1 for foreground, 0 for background). Required if points are provided.
+        box: A list representing the bounding box [x1, y1, x2, y2]. Provide either points or box.
+        multimask_output: Whether to return multiple masks.
         hq_token_only: Flag for SAM-HQ prediction mode.
 
     Returns:
         A tuple containing:
         - final_masks: Torch tensor of boolean mask(s) (num_masks, H, W) on the specified device.
         - final_scores: Torch tensor of confidence score(s) (num_masks,) on the specified device.
-        Returns empty tensors if an error occurs or predictor is unavailable.
+        Returns empty tensors if an error occurs, predictor is unavailable, or inputs are invalid.
     """
-    print(f"Predicting mask with {len(points)} points using SAM-HQ...")
-
     if not sam_predictor:
         print("Error: SAM-HQ predictor is not available.")
         return torch.empty((0, *image_rgb.shape[:2]), device=device), torch.empty((0,), device=device)
 
-    if not points or not point_labels or len(points) != len(point_labels):
-        print("Error: Invalid points or point_labels provided.")
+    # Validate inputs: Exactly one of points or box should be provided
+    if (points is None and box is None) or (points is not None and box is not None):
+        print("Error: Provide either 'points' or 'box', but not both.")
         return torch.empty((0, *image_rgb.shape[:2]), device=device), torch.empty((0,), device=device)
+
+    if points is not None and (point_labels is None or len(points) != len(point_labels)):
+         print("Error: 'point_labels' must be provided and match the length of 'points'.")
+         return torch.empty((0, *image_rgb.shape[:2]), device=device), torch.empty((0,), device=device)
+
+    if box is not None and (not isinstance(box, list) or len(box) != 4):
+        print("Error: 'box' must be a list of 4 integers [x1, y1, x2, y2].")
+        return torch.empty((0, *image_rgb.shape[:2]), device=device), torch.empty((0,), device=device)
+
+    prompt_type = "box" if box is not None else "points"
+    num_prompts = 1 if box is not None else len(points) if points else 0 # Handle None case for len()
+    print(f"Predicting mask with {num_prompts} {prompt_type} using SAM-HQ...")
 
     try:
         # Set image for SAM Predictor
         sam_predictor.set_image(image_rgb)
 
-        # Prepare points and labels as tensors on the correct device
-        input_points = np.array(points, dtype=np.float32)
-        input_labels = np.array(point_labels, dtype=np.int32)
+        # Prepare points or box tensor
+        transformed_points = None
+        input_labels_torch = None
+        transformed_boxes = None
 
-        # Add batch dimension (required by predict_torch)
-        input_points_torch = torch.tensor(input_points, device=device).unsqueeze(0)
-        input_labels_torch = torch.tensor(input_labels, device=device).unsqueeze(0)
-
-        # Transform points to the model's input scale
-        transformed_points = sam_predictor.transform.apply_coords_torch(input_points_torch, image_rgb.shape[:2])
+        if points is not None and point_labels is not None:
+            # Prepare points and labels as tensors on the correct device
+            input_points_np = np.array(points, dtype=np.float32)
+            input_labels_np = np.array(point_labels, dtype=np.int32)
+            # Add batch dimension
+            input_points_torch = torch.tensor(input_points_np, device=device).unsqueeze(0)
+            input_labels_torch = torch.tensor(input_labels_np, device=device).unsqueeze(0)
+            # Transform points
+            transformed_points = sam_predictor.transform.apply_coords_torch(input_points_torch, image_rgb.shape[:2])
+        elif box is not None:
+            # Prepare box tensor
+            input_box_np = np.array([box], dtype=np.float32) # Shape (1, 4)
+            input_boxes_torch = torch.tensor(input_box_np, device=device) # Shape (1, 4)
+            # Transform box
+            transformed_boxes = sam_predictor.transform.apply_boxes_torch(input_boxes_torch, image_rgb.shape[:2])
 
         # Predict masks using predict_torch
         masks, scores, logits = sam_predictor.predict_torch(
-            point_coords=transformed_points,
-            point_labels=input_labels_torch,
-            boxes=None, # No box prompt
+            point_coords=transformed_points, # Will be None if using box
+            point_labels=input_labels_torch,  # Will be None if using box
+            boxes=transformed_boxes,          # Will be None if using points
             multimask_output=multimask_output,
             hq_token_only=hq_token_only,
         )
-        # masks shape: (batch_size, num_masks_per_point, H, W) -> (1, 1 or 3, H, W)
-        # scores shape: (batch_size, num_masks_per_point) -> (1, 1 or 3)
+        # masks shape: (batch_size, num_masks_per_prompt, H, W) -> (1, 1 or 3, H, W)
+        # scores shape: (batch_size, num_masks_per_prompt) -> (1, 1 or 3)
 
-        # Remove batch dimension and squeeze mask channel if multimask_output is False
+        # Remove batch dimension
+        # If multimask_output=False, num_masks_per_prompt is 1, otherwise it's typically 3
         final_masks = masks.squeeze(0) # Shape: (num_masks, H, W)
         final_scores = scores.squeeze(0) # Shape: (num_masks,)
 
@@ -97,10 +121,10 @@ def predict_mask_with_points(
         return final_masks, final_scores
 
     except Exception as e:
-        print(f"Error during SAM-HQ point prediction: {e}")
-        print("Check input points format and predictor arguments.")
+        print(f"Error during SAM-HQ {prompt_type} prediction: {e}") # Updated error message
+        print(f"Check input {prompt_type} format and predictor arguments.")
         return torch.empty((0, *image_rgb.shape[:2]), device=device), torch.empty((0,), device=device)
-# --- Main Processing Function ---
+# --- Automatic Mask Generation Function (Florence + SAM-HQ) ---
 def generate_masks_from_image(
     image_rgb: np.ndarray,
     florence_model, # Pass loaded model
