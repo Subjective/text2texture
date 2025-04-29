@@ -136,10 +136,19 @@ export function useMasking(): UseMaskingReturn {
   // --- Canvas Drawing Logic ---
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
+    if (!canvas) return;
+    // Ensure canvas resolution matches its displayed size
+    const rect = canvas.getBoundingClientRect();
+    const w = Math.round(rect.width);
+    const h = Math.round(rect.height);
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    const ctx = canvas.getContext('2d');
     const mainImg = imageRef.current;
 
-    if (!canvas || !ctx) return;
+    if (!ctx) return;
 
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -222,57 +231,6 @@ export function useMasking(): UseMaskingReturn {
     }
 
   }, [points, savedMasks, maskingMode, currentBox, selectedBox]); // Dependencies
-
-  // --- Canvas Resize Effect ---
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    let animationFrameId: number | null = null;
-
-    const resizeObserver = new ResizeObserver(entries => {
-      if (!animationFrameId) {
-        animationFrameId = requestAnimationFrame(() => {
-          for (const entry of entries) {
-            const { width, height } = entry.contentRect;
-            const roundedWidth = Math.round(width);
-            const roundedHeight = Math.round(height);
-            if (canvas.width !== roundedWidth || canvas.height !== roundedHeight) {
-              canvas.width = roundedWidth;
-              canvas.height = roundedHeight;
-              drawCanvas(); // Redraw immediately after resize
-            }
-          }
-          animationFrameId = null;
-        });
-      }
-    });
-
-    const parentElement = canvas.parentElement;
-    if (parentElement) {
-      resizeObserver.observe(parentElement);
-      // Set initial size based on parent
-      const { width, height } = parentElement.getBoundingClientRect();
-      const roundedWidth = Math.round(width);
-      const roundedHeight = Math.round(height);
-      if (canvas.width !== roundedWidth || canvas.height !== roundedHeight) {
-        canvas.width = roundedWidth;
-        canvas.height = roundedHeight;
-      }
-      // Initial draw needs slight delay to ensure layout/image is ready
-      const initialDrawTimeout = setTimeout(drawCanvas, 50);
-      return () => {
-        clearTimeout(initialDrawTimeout);
-        if (animationFrameId) cancelAnimationFrame(animationFrameId);
-        resizeObserver.unobserve(parentElement);
-      };
-    }
-
-    // Cleanup if parentElement wasn't found
-    return () => {
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
-    };
-  }, [drawCanvas]); // Rerun if drawCanvas identity changes
 
   // --- Canvas Interaction Handlers ---
   const handleMouseDown = useCallback((event: MouseEvent<HTMLCanvasElement>) => {

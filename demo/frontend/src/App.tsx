@@ -76,7 +76,7 @@ function App() {
       masking.imageRef.current = null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imageInput.imageSrc, workflow.setError]); // Rerun when imageSrc changes
+  }, [imageInput.imageSrc, workflow.setError, workflow.currentStep]);
 
   // Handle step transition after image generation
   const handleGenerateImage = useCallback(async () => {
