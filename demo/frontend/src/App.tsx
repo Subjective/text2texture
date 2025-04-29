@@ -257,14 +257,14 @@ function App() {
 
         {/* Right Column: 3D Viewer / Result */}
         <div className="lg:sticky lg:top-6 h-[60vh] lg:h-[calc(100vh-4rem)] min-h-[400px]">
-          <section id="viewer-section" className="bg-gray-100 dark:bg-gray-900 p-3 md:p-4 rounded-lg shadow-md h-full flex flex-col">
+          <section id="viewer-section" className="bg-gray-100 dark:bg-gray-800 p-3 md:p-4 rounded-lg shadow-md h-full flex flex-col">
             <h2 className="text-lg md:text-xl font-semibold mb-3 text-gray-800 dark:text-gray-100 flex-shrink-0">
               {modelGeneration.result ? 'Generated Model Preview' : '3D Preview Area'}
             </h2>
 
             {/* Loading/Generating State for Viewer */}
             {modelGeneration.isLoadingModel && workflow.currentStep === 'generating' && (
-              <div className="flex-grow flex items-center justify-center bg-gray-200 dark:bg-gray-800 rounded-md">
+              <div className="flex-grow flex items-center justify-center bg-gray-200 dark:bg-gray-700 rounded-md">
                 <div className="text-center p-4">
                   <svg className="animate-spin h-8 w-8 text-blue-600 dark:text-blue-400 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -287,7 +287,7 @@ function App() {
 
             {/* Placeholder when no result and not loading */}
             {!workflow.isLoading && workflow.currentStep !== 'result' && workflow.currentStep !== 'generating' && (
-              <div className="flex-grow flex items-center justify-center bg-gray-200 dark:bg-gray-800 rounded-md text-center p-4">
+              <div className="flex-grow flex items-center justify-center bg-gray-200 dark:bg-gray-700 rounded-md text-center p-4">
                 <p className="text-gray-500 dark:text-gray-400">
                   {workflow.currentStep === 'input' ? 'Upload or generate an image to begin.' :
                     workflow.currentStep === 'masking' ? 'Select points and predict masks, or proceed to parameters.' :

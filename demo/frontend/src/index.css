@@ -1,1 +1,14 @@
 @import "tailwindcss";
+
+/* Dark mode styles */
+@media (prefers-color-scheme: dark) {
+  body {
+    @apply bg-gray-900;
+  }
+}
+
+/* Title specific styles */
+.dark h1 {
+  @apply text-white;
+  text-shadow: 0 0 10px rgba(59, 130, 246, 0.5); /* Subtle blue glow in dark mode */
+}
