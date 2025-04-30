@@ -3,7 +3,7 @@ Flask Backend for Text2Texture.
 
 Endpoints:
 - /api/generate_image: Generates an image from a text prompt using OpenAI DALL-E.
-- /api/predict_mask: Predicts a segmentation mask using SAM2 based on image and points.
+- /api/predict_mask: Predicts a segmentation mask using SAM-HQ based on image and points.
 - /api/generate_masks: Generates masks from an image using Florence 2 + HQ-SAM.
 - /api/generate_model: Generates a 3D model (STL/PLY) from a heightmap derived from an input image,
                  optionally considering provided masks.

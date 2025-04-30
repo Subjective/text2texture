@@ -5,7 +5,7 @@ LABEL description="Backend service for Text2Texture Demo"
 
 WORKDIR /app
 
-# Install system dependencies (git needed for sam2 install, potentially others for CV libs)
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     build-essential \
