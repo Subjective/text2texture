@@ -334,8 +334,15 @@ def api_generate_3d_model():
             logger.warning(f"Could not clean up temporary file {f_path}: {e}")
 
     # --- 9) Return Success Response ---
-    file_url = request.host_url.rstrip('/') + "/outputs/" + output_filename
-    heightmap_file_url = request.host_url.rstrip('/') + "/outputs/" + output_heightmap_filename
+    # In development (running directly with Flask), use full URL. In production (Docker), use relative path
+    if config.FLASK_ENV == "development":
+        base_url = request.host_url.rstrip('/')
+        file_url = f"{base_url}/outputs/{output_filename}"
+        heightmap_file_url = f"{base_url}/outputs/{output_heightmap_filename}"
+    else:
+        file_url = f"/outputs/{output_filename}"
+        heightmap_file_url = f"/outputs/{output_heightmap_filename}"
+    
     logger.info(f"Returning success response. Model URL: {file_url}, Heightmap URL: {heightmap_file_url}")
     return jsonify({
         "fileUrl": file_url,

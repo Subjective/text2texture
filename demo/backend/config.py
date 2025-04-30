@@ -6,6 +6,9 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+# --- Environment ---
+FLASK_ENV = os.getenv("FLASK_ENV", "development")  # Defaults to development unless set otherwise
+
 # --- Folders ---
 UPLOAD_FOLDER = "uploads"
 OUTPUT_FOLDER = "outputs"
@@ -46,7 +49,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # --- Flask Server Configuration ---
 FLASK_HOST = os.getenv("FLASK_HOST", "127.0.0.1")
 FLASK_PORT = int(os.getenv("FLASK_PORT", 5000))
-FLASK_DEBUG = os.getenv("FLASK_DEBUG", "True").lower() in ["true", "1", "yes"]
+# Debug mode should be disabled in production
+FLASK_DEBUG = os.getenv("FLASK_DEBUG", "True").lower() in ["true", "1", "yes"] if FLASK_ENV == "development" else False
 
 # --- Logging ---
 # Basic logging level, can be configured further in app setup
