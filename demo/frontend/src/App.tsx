@@ -14,7 +14,6 @@ import { ParamsSection } from './components/ParamsSection/ParamsSection';
 import { ResultSection } from './components/ResultSection/ResultSection';
 import { ErrorMessage } from './components/ErrorMessage/ErrorMessage';
 import { LoadingIndicator } from './components/LoadingIndicator/LoadingIndicator';
-// Removed unused ModelViewer import
 
 // Import Types (if needed, though hooks should manage most)
 // import { Step } from './types/app.types';
@@ -27,6 +26,7 @@ function App() {
   const modelParams = useModelParams();
   const modelGeneration = useModelGeneration();
   const [inputSectionKey, setInputSectionKey] = useState<number>(1); // Key for resetting InputSection
+  const [isFullScreen, setIsFullScreen] = useState<boolean>(false); // State for fullscreen toggle
 
   // --- Hook Coordination & Effects ---
 
@@ -77,6 +77,17 @@ function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageInput.imageSrc, workflow.setError, workflow.currentStep]);
+
+  // Trigger canvas redraw when fullscreen is toggled and we have an image
+  useEffect(() => {
+    if (imageInput.imageSrc && masking.imageRef.current && workflow.currentStep === 'masking') {
+      // Small timeout to ensure DOM is fully updated
+      const timer = setTimeout(() => {
+        masking.drawCanvas();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isFullScreen, workflow.currentStep, imageInput.imageSrc, masking]);
 
   // Handle step transition after image generation
   const handleGenerateImage = useCallback(async () => {
@@ -131,8 +142,6 @@ function App() {
 
 
   // Handle navigation actions
-  // goToMasking is no longer needed here
-
   const goToParams = useCallback(() => {
     if (!imageInput.imageSrc) {
       workflow.setError("Cannot proceed without an image.");
@@ -165,6 +174,22 @@ function App() {
     imageInput.setInputMethod(method);
   }, [handleStartOver, imageInput.setInputMethod]);
 
+  // Handle fullscreen toggle
+  const handleFullscreenToggle = useCallback(() => {
+    // Toggle fullscreen state
+    setIsFullScreen(prev => !prev);
+    
+    // Ensure input key is incremented to force re-render of file input
+    setInputSectionKey(prev => prev + 1);
+    
+    // Schedule a redraw of the masking canvas after DOM update
+    if (imageInput.imageSrc && workflow.currentStep === 'masking') {
+      // Allow DOM to update first
+      setTimeout(() => {
+        masking.drawCanvas();
+      }, 100);
+    }
+  }, [imageInput.imageSrc, masking, workflow.currentStep]);
 
   // --- Render Logic ---
   return (
@@ -181,86 +206,110 @@ function App() {
       <ErrorMessage error={workflow.error} onDismiss={workflow.clearError} />
 
       {/* Main Content Grid */}
-      <main className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 mt-4">
+      <main className={`grid ${isFullScreen ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'} gap-6 md:gap-8 mt-4`}>
 
         {/* Left Column: Input, Masking, Parameters */}
-        <div className="space-y-6 md:space-y-8">
+        {!isFullScreen && (
+          <div className="space-y-6 md:space-y-8">
 
-          {/* Step 1: Input */}
-          <InputSection
-            key={inputSectionKey}
-            inputMethod={imageInput.inputMethod}
-            textPrompt={imageInput.textPrompt}
-            isLoading={workflow.isLoading}
-            isLoadingImageGen={imageInput.isLoadingImageGen}
-            onInputMethodChange={handleInputMethodChange}
-            onTextPromptChange={(e) => imageInput.setTextPrompt(e.target.value)}
-            onFileChange={handleFileSelected} // Use the new async handler
-            onGenerateImageFromText={handleGenerateImage} // Use coordinated handler
-          />
-
-          {/* Step 2: Masking (Conditional) */}
-          {/* Only render masking section when in the 'masking' step and an image exists */}
-          {workflow.currentStep === 'masking' && imageInput.imageSrc && (
-            <MaskingSection
-              canvasRef={masking.canvasRef}
-              points={masking.points}
-              savedMasks={masking.savedMasks}
-              selectedBox={masking.selectedBox} // Pass selectedBox
-              maskingMode={masking.maskingMode} // Pass maskingMode
-              imageSrc={imageInput.imageSrc}
+            {/* Step 1: Input */}
+            <InputSection
+              key={inputSectionKey}
+              inputMethod={imageInput.inputMethod}
+              textPrompt={imageInput.textPrompt}
               isLoading={workflow.isLoading}
-              isLoadingMask={masking.isLoadingMask}
-              isLoadingAutoMask={masking.isLoadingAutoMask}
-              setMaskingMode={masking.setMaskingMode} // Pass setMaskingMode
-              handleMouseDown={masking.handleMouseDown} // Pass handleMouseDown
-              handleMouseMove={masking.handleMouseMove} // Pass handleMouseMove
-              handleMouseUp={masking.handleMouseUp} // Pass handleMouseUp
-              triggerPrediction={masking.triggerPrediction} // Pass triggerPrediction
-              // Pass imageSrc to the handler trigger
-              handleGenerateMasksAutomatically={() => masking.handleGenerateMasksAutomatically(imageInput.imageSrc)}
-              handleResetCurrentPoints={masking.handleResetCurrentPoints}
-              handleToggleMaskActive={masking.handleToggleMaskActive}
-              handleRenameMask={masking.handleRenameMask}
-              handleDeleteMask={masking.handleDeleteMask}
-              handleClearSavedMasks={masking.handleClearSavedMasks}
-              handleDownloadActiveMasks={masking.handleDownloadActiveMasks}
-              goToParams={goToParams}
+              isLoadingImageGen={imageInput.isLoadingImageGen}
+              uploadedImageFilename={imageInput.uploadedImageFilename}
+              onInputMethodChange={handleInputMethodChange}
+              onTextPromptChange={(e) => imageInput.setTextPrompt(e.target.value)}
+              onFileChange={handleFileSelected} // Use the new async handler
+              onGenerateImageFromText={handleGenerateImage} // Use coordinated handler
             />
-          )}
 
-          {/* Step 3: Parameters (Conditional) */}
-          {workflow.currentStep === 'params' && imageInput.imageSrc && (
-            <ParamsSection
-              params={modelParams} // Pass the whole hook result
-              isLoading={workflow.isLoading}
-              isLoadingModel={modelGeneration.isLoadingModel}
-              onGenerateModel={handleGenerateModel} // Use coordinated handler
-              goBack={() => workflow.setCurrentStep('masking')}
-            />
-          )}
+            {/* Step 2: Masking (Conditional) */}
+            {/* Only render masking section when in the 'masking' step and an image exists */}
+            {workflow.currentStep === 'masking' && imageInput.imageSrc && (
+              <MaskingSection
+                canvasRef={masking.canvasRef}
+                points={masking.points}
+                savedMasks={masking.savedMasks}
+                selectedBox={masking.selectedBox} // Pass selectedBox
+                maskingMode={masking.maskingMode} // Pass maskingMode
+                imageSrc={imageInput.imageSrc}
+                isLoading={workflow.isLoading}
+                isLoadingMask={masking.isLoadingMask}
+                isLoadingAutoMask={masking.isLoadingAutoMask}
+                setMaskingMode={masking.setMaskingMode} // Pass setMaskingMode
+                handleMouseDown={masking.handleMouseDown} // Pass handleMouseDown
+                handleMouseMove={masking.handleMouseMove} // Pass handleMouseMove
+                handleMouseUp={masking.handleMouseUp} // Pass handleMouseUp
+                triggerPrediction={masking.triggerPrediction} // Pass triggerPrediction
+                // Pass imageSrc to the handler trigger
+                handleGenerateMasksAutomatically={() => masking.handleGenerateMasksAutomatically(imageInput.imageSrc)}
+                handleResetCurrentPoints={masking.handleResetCurrentPoints}
+                handleToggleMaskActive={masking.handleToggleMaskActive}
+                handleRenameMask={masking.handleRenameMask}
+                handleDeleteMask={masking.handleDeleteMask}
+                handleClearSavedMasks={masking.handleClearSavedMasks}
+                handleDownloadActiveMasks={masking.handleDownloadActiveMasks}
+                goToParams={goToParams}
+              />
+            )}
 
-          {/* Loading Indicator during Generation Steps */}
-          {workflow.isLoading && workflow.currentStep === 'generating' && (
-            <LoadingIndicator
-              message={
-                masking.isLoadingMask ? "Predicting mask..." :
-                  masking.isLoadingAutoMask ? "Generating masks..." :
-                    imageInput.isLoadingImageGen ? "Generating image..." :
-                      modelGeneration.isLoadingModel ? "Generating 3D model..." : "Processing..."
-              }
-            />
-          )}
+            {/* Step 3: Parameters (Conditional) */}
+            {workflow.currentStep === 'params' && imageInput.imageSrc && (
+              <ParamsSection
+                params={modelParams} // Pass the whole hook result
+                isLoading={workflow.isLoading}
+                isLoadingModel={modelGeneration.isLoadingModel}
+                onGenerateModel={handleGenerateModel} // Use coordinated handler
+                goBack={() => workflow.setCurrentStep('masking')}
+              />
+            )}
 
-        </div> {/* End Left Column */}
+            {/* Loading Indicator during Generation Steps */}
+            {workflow.isLoading && workflow.currentStep === 'generating' && (
+              <LoadingIndicator
+                message={
+                  masking.isLoadingMask ? "Predicting mask..." :
+                    masking.isLoadingAutoMask ? "Generating masks..." :
+                      imageInput.isLoadingImageGen ? "Generating image..." :
+                        modelGeneration.isLoadingModel ? "Generating 3D model..." : "Processing..."
+                }
+              />
+            )}
+
+          </div>
+        )} {/* End Left Column Conditional Render */}
 
 
         {/* Right Column: 3D Viewer / Result */}
-        <div className="lg:sticky lg:top-6 h-[60vh] lg:h-[calc(100vh-4rem)] min-h-[400px]">
+        <div className={`${!isFullScreen ? 'lg:sticky lg:top-6 h-[60vh] lg:h-[calc(100vh-4rem)]' : 'h-[calc(100vh-8rem)]'} min-h-[400px]`}>
           <section id="viewer-section" className="bg-gray-100 dark:bg-gray-800 p-3 md:p-4 rounded-lg shadow-md h-full flex flex-col">
-            <h2 className="text-lg md:text-xl font-semibold mb-3 text-gray-800 dark:text-gray-100 flex-shrink-0">
-              {modelGeneration.result ? 'Generated Model Preview' : '3D Preview Area'}
-            </h2>
+            <div className="flex justify-between items-center mb-3 flex-shrink-0"> {/* Flex container for title and button */}
+              <h2 className="text-lg md:text-xl font-semibold text-gray-800 dark:text-gray-100">
+                {modelGeneration.result ? 'Generated Model Preview' : '3D Preview Area'}
+              </h2>
+              {/* Fullscreen Toggle Button */}
+              <button
+                onClick={handleFullscreenToggle}
+                className="p-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                title={isFullScreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+                aria-label={isFullScreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+              >
+                {isFullScreen ? (
+                  // Exit fullscreen icon
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 14h6m0 0v6m0-6-7 7m17-11h-6m0 0V4m0 6 7-7"/>
+                  </svg>
+                ) : (
+                  // Enter fullscreen icon
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M15 3h6m0 0v6m0-6-7 7M9 21H3m0 0v-6m0 6 7-7"/>
+                  </svg>
+                )}
+              </button>
+            </div>
 
             {/* Loading/Generating State for Viewer */}
             {modelGeneration.isLoadingModel && workflow.currentStep === 'generating' && (
@@ -283,6 +332,24 @@ function App() {
                 isLoading={workflow.isLoading}
                 onStartOver={handleStartOver}
               />
+            )}
+
+            {/* Post-Generation Navigation (Not Fullscreen) */}
+            {workflow.currentStep === 'result' && !isFullScreen && (
+              <div className="mt-4 flex justify-center gap-4 flex-shrink-0">
+                <button
+                  onClick={() => workflow.setCurrentStep('masking')}
+                  className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-100 rounded hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors text-sm"
+                >
+                  Modify Masks
+                </button>
+                <button
+                  onClick={() => workflow.setCurrentStep('params')}
+                  className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-100 rounded hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors text-sm"
+                >
+                  Modify Parameters
+                </button>
+              </div>
             )}
 
             {/* Placeholder when no result and not loading */}

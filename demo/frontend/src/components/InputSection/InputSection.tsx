@@ -6,6 +6,7 @@ interface InputSectionProps {
   textPrompt: string;
   isLoading: boolean; // Combined loading state from workflow
   isLoadingImageGen: boolean; // Specific loading state for text-to-image
+  uploadedImageFilename: string | null; // Filename from state
   onInputMethodChange: (method: InputMethod) => void;
   onTextPromptChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -17,6 +18,7 @@ export function InputSection({
   textPrompt,
   isLoading,
   isLoadingImageGen,
+  uploadedImageFilename,
   onInputMethodChange,
   onTextPromptChange,
   onFileChange,
@@ -61,17 +63,35 @@ export function InputSection({
       {/* Conditional Input Fields */}
       {inputMethod === "upload" && (
         <div>
-          <label htmlFor="imageUpload" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Select Image File:
           </label>
-          <input
-            type="file"
-            id="imageUpload" // Keep ID for potential label association or resets
-            accept="image/png, image/jpeg, image/webp"
-            onChange={onFileChange}
-            className="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-gray-700 dark:file:text-gray-300 dark:hover:file:bg-gray-600 disabled:opacity-50"
-            disabled={isLoading}
-          />
+          <div className="flex flex-col">
+            {/* Custom file input that hides the native browser UI */}
+            <div className="relative">
+              <input
+                type="file"
+                id="imageUpload"
+                accept="image/png, image/jpeg, image/webp"
+                onChange={onFileChange}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                disabled={isLoading}
+                aria-label="Upload file"
+              />
+              <div className="flex items-center">
+                <button
+                  type="button"
+                  className="py-2 px-4 bg-blue-50 text-blue-700 text-sm font-semibold rounded-l-lg border border-blue-100 hover:bg-blue-100 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600 disabled:opacity-50"
+                  disabled={isLoading}
+                >
+                  Choose File
+                </button>
+                <div className="flex-grow px-3 py-2 text-sm text-gray-500 dark:text-gray-400 border border-l-0 border-gray-300 dark:border-gray-600 rounded-r-lg">
+                  {uploadedImageFilename || "No file chosen"}
+                </div>
+              </div>
+            </div>
+          </div>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">PNG, JPG, or WEBP files accepted.</p>
         </div>
       )}
