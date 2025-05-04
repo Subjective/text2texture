@@ -115,7 +115,7 @@ function App() {
       params
     );
     if (result) {
-      workflow.setCurrentStep("result");
+      workflow.setCurrentStep("params"); // Stay on params step after generation to allow tweaking
     } else {
       // If generation fails, move back from 'generating' state
       // (Error handling itself is done via useEffect)
@@ -226,8 +226,7 @@ function App() {
               onGenerateImageFromText={handleGenerateImage} // Use coordinated handler
             />
 
-            {/* Step 2: Masking (Conditional) */}
-            {/* Only render masking section when in the 'masking' step and an image exists */}
+            {/* Step 2: Masking - Show only when in masking step */}
             {workflow.currentStep === 'masking' && imageInput.imageSrc && (
               <MaskingSection
                 canvasRef={masking.canvasRef}
@@ -256,7 +255,7 @@ function App() {
               />
             )}
 
-            {/* Step 3: Parameters (Conditional) */}
+            {/* Step 3: Parameters - Show only when in params step */}
             {workflow.currentStep === 'params' && imageInput.imageSrc && (
               <ParamsSection
                 params={modelParams} // Pass the whole hook result
@@ -284,6 +283,7 @@ function App() {
 
 
         {/* Right Column: 3D Viewer / Result */}
+        {/* Adjust sticky positioning and span based on fullscreen */}
         <div className={`${!isFullScreen ? 'lg:sticky lg:top-6 h-[60vh] lg:h-[calc(100vh-4rem)]' : 'h-[calc(100vh-8rem)]'} min-h-[400px]`}>
           <section id="viewer-section" className="bg-gray-100 dark:bg-gray-800 p-3 md:p-4 rounded-lg shadow-md h-full flex flex-col">
             <div className="flex justify-between items-center mb-3 flex-shrink-0"> {/* Flex container for title and button */}
@@ -325,35 +325,18 @@ function App() {
               </div>
             )}
 
-            {/* Result Display */}
-            {workflow.currentStep === 'result' && modelGeneration.result && (
+            {/* Result Display - shown regardless of current step when a model exists */}
+            {modelGeneration.result && (
               <ResultSection
                 result={modelGeneration.result}
                 isLoading={workflow.isLoading}
                 onStartOver={handleStartOver}
+                showStartOverButton={false} // Never show the Start Over button
               />
             )}
 
-            {/* Post-Generation Navigation (Not Fullscreen) */}
-            {workflow.currentStep === 'result' && !isFullScreen && (
-              <div className="mt-4 flex justify-center gap-4 flex-shrink-0">
-                <button
-                  onClick={() => workflow.setCurrentStep('masking')}
-                  className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-100 rounded hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors text-sm"
-                >
-                  Modify Masks
-                </button>
-                <button
-                  onClick={() => workflow.setCurrentStep('params')}
-                  className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-100 rounded hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors text-sm"
-                >
-                  Modify Parameters
-                </button>
-              </div>
-            )}
-
             {/* Placeholder when no result and not loading */}
-            {!workflow.isLoading && workflow.currentStep !== 'result' && workflow.currentStep !== 'generating' && (
+            {!workflow.isLoading && !modelGeneration.result && workflow.currentStep !== 'generating' && (
               <div className="flex-grow flex items-center justify-center bg-gray-200 dark:bg-gray-700 rounded-md text-center p-4">
                 <p className="text-gray-500 dark:text-gray-400">
                   {workflow.currentStep === 'input' ? 'Upload or generate an image to begin.' :

@@ -5,9 +5,15 @@ interface ResultSectionProps {
   result: ModelGenerationResult | null;
   isLoading: boolean; // Overall loading state
   onStartOver: () => void; // Function to reset the app
+  showStartOverButton?: boolean; // Optional prop to control Start Over button visibility
 }
 
-export function ResultSection({ result, isLoading, onStartOver }: ResultSectionProps) {
+export function ResultSection({ 
+  result, 
+  isLoading, 
+  onStartOver,
+  showStartOverButton = true // Default to true if not provided
+}: ResultSectionProps) {
 
   if (!result) {
     // This section should ideally only be rendered when there's a result,
@@ -49,13 +55,16 @@ export function ResultSection({ result, isLoading, onStartOver }: ResultSectionP
             Download Heightmap (PNG)
           </a>
         )}
-        <button
-          onClick={onStartOver}
-          disabled={isLoading} // Disable if any loading is happening
-          className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md shadow-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800 disabled:opacity-50"
-        >
-          Start Over
-        </button>
+        {/* Only show Start Over button if showStartOverButton is true */}
+        {showStartOverButton && (
+          <button
+            onClick={onStartOver}
+            disabled={isLoading} // Disable if any loading is happening
+            className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md shadow-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800 disabled:opacity-50"
+          >
+            Start Over
+          </button>
+        )}
       </div>
       {/* Model Viewer Container */}
       {/* Key forces remount on resultUrl change if needed */}
