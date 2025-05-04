@@ -1,5 +1,5 @@
 import React, { MouseEvent } from 'react';
-import { Point, SavedMask, BoundingBox, MaskingMode } from '../../types/app.types';
+import { Point, SavedMask, BoundingBox, MaskingMode, TextureType } from '../../types/app.types';
 import { MaskList } from '../MaskList/MaskList';
 
 interface MaskingSectionProps {
@@ -25,6 +25,7 @@ interface MaskingSectionProps {
   handleResetCurrentPoints: () => void; // Renamed in hook, but keeps same name here for clarity
   handleToggleMaskActive: (id: string) => void;
   handleRenameMask: (id: string, newName: string) => void;
+  handleTextureTypeChange: (id: string, textureType: TextureType) => void;
   handleDeleteMask: (id: string) => void;
   handleClearSavedMasks: () => void;
   handleDownloadActiveMasks: () => void;
@@ -51,6 +52,7 @@ export function MaskingSection({
   handleResetCurrentPoints,
   handleToggleMaskActive,
   handleRenameMask,
+  handleTextureTypeChange,
   handleDeleteMask,
   handleClearSavedMasks,
   handleDownloadActiveMasks,
@@ -186,6 +188,7 @@ export function MaskingSection({
         onToggleActive={handleToggleMaskActive}
         onDelete={handleDeleteMask}
         onRename={handleRenameMask}
+        onTextureTypeChange={handleTextureTypeChange}
         onClearAll={handleClearSavedMasks}
         onDownloadActive={handleDownloadActiveMasks}
       />

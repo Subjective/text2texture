@@ -1,4 +1,4 @@
-import { SavedMask } from '../../types/app.types';
+import { SavedMask, TextureType } from '../../types/app.types';
 import { MaskListItem } from './MaskListItem'; // Import the item component
 
 interface MaskListProps {
@@ -7,6 +7,7 @@ interface MaskListProps {
   onToggleActive: (id: string) => void;
   onDelete: (id: string) => void;
   onRename: (id: string, newName: string) => void;
+  onTextureTypeChange: (id: string, textureType: TextureType) => void; // Add texture type handler
   onClearAll: () => void; // Handler for clearing all masks
   onDownloadActive: () => void; // Handler for downloading active masks
 }
@@ -17,6 +18,7 @@ export function MaskList({
   onToggleActive,
   onDelete,
   onRename,
+  onTextureTypeChange,
   onClearAll,
   onDownloadActive
 }: MaskListProps) {
@@ -42,6 +44,7 @@ export function MaskList({
             onToggleActive={onToggleActive}
             onDelete={onDelete}
             onRename={onRename}
+            onTextureTypeChange={onTextureTypeChange}
           />
         ))}
       </ul>

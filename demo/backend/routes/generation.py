@@ -15,7 +15,7 @@ import config
 import models
 from processing.depth import get_grayscale_depth
 from processing.conversion_3d import generate_block_from_heightmap
-from utils.image_utils import generate_checkerboard_heightmap # Corrected import
+from utils.image_utils import generate_heightmap_by_texture_type
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -103,7 +103,7 @@ def api_generate_image():
         with open(image_path, "rb") as img_file:
             img_base64 = base64.b64encode(img_file.read()).decode('utf-8')
 
-        # Clean up the generated file immediately after reading? Optional.
+        # Clean up the generated file immediately after reading?
         try:
             os.remove(image_path)
             logger.info(f"Cleaned up generated image file: {image_path}")
@@ -209,7 +209,7 @@ def api_generate_3d_model():
     if saved_mask_files:
         logger.info(f"Merging details for {len(saved_mask_files)} masks...")
         detail_scale = 50.0
-        checker_size = 8
+        feature_size = 8
 
         for mask_key in mask_keys_sorted:
             mask_path = saved_mask_files[mask_key]
@@ -223,14 +223,32 @@ def api_generate_3d_model():
                      mask_img = cv2.resize(mask_img, (final_heightmap_np.shape[1], final_heightmap_np.shape[0]), interpolation=cv2.INTER_NEAREST)
 
                 current_mask_bool = mask_img.astype(bool)
-                # Use imported function
-                checkerboard_detail_np = generate_checkerboard_heightmap(
+                
+                # Find the corresponding metadata for this mask
+                mask_id = None
+                texture_type = "checkerboard"  # Default texture type
+                
+                # Extract the mask number from the key (e.g., "mask_0" -> "0")
+                mask_num = mask_key.split('_')[1]
+                
+                # Find metadata for this mask
+                for meta in mask_metadata:
+                    if meta.get("maskKey") == mask_key or meta.get("id", "").endswith(mask_num):
+                        texture_type = meta.get("textureType", "checkerboard")
+                        break
+                
+                logger.info(f"Using texture type '{texture_type}' for mask {mask_key}")
+                
+                # Use the new function to generate the heightmap based on texture type
+                texture_detail_np = generate_heightmap_by_texture_type(
                     current_mask_bool,
-                    checker_size=checker_size,
+                    texture_type=texture_type,
+                    feature_size=feature_size,
                     height=1.0
                 )
-                final_heightmap_np[current_mask_bool] += detail_scale * checkerboard_detail_np[current_mask_bool]
-                logger.debug(f"Applied checkerboard detail for mask {mask_key}")
+                
+                final_heightmap_np[current_mask_bool] += detail_scale * texture_detail_np[current_mask_bool]
+                logger.debug(f"Applied {texture_type} detail for mask {mask_key}")
 
             except Exception as e:
                 logger.error(f"Error processing mask {mask_path} for detail merging: {e}", exc_info=True)
@@ -249,11 +267,9 @@ def api_generate_3d_model():
             logger.info(f"Saved final merged heightmap to: {merged_heightmap_path}")
             heightmap_to_use = merged_heightmap_path
         except Exception as e:
-             logger.error(f"Error saving merged heightmap: {e}", exc_info=True)
-             # TODO: Cleanup
-             return jsonify({"error": f"Error saving merged heightmap: {e}"}), 500
+            logger.error(f"Error saving merged heightmap to {merged_heightmap_path}: {e}", exc_info=True)
+            return jsonify({"error": f"Error saving merged heightmap: {e}"}), 500
     else:
-        logger.info("No masks provided, using base heightmap for 3D generation.")
         heightmap_to_use = heightmap_path
 
     # --- 5) Retrieve 3D Model Parameters ---

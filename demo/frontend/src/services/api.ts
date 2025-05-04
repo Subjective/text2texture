@@ -204,7 +204,12 @@ export const generate3DModel = async (
 
 
   // Append mask metadata
-  const maskMetadata = activeMasks.map(m => ({ id: m.id, name: m.name }));
+  const maskMetadata = activeMasks.map((m, index) => ({ 
+    id: m.id, 
+    name: m.name,
+    textureType: m.textureType,
+    maskKey: `mask_${index}` // Mask key for backend to match metadata to masks
+  }));
   formData.append("mask_metadata", JSON.stringify(maskMetadata));
 
   // Append Model Parameters

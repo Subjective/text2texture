@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, MouseEvent } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Point, SavedMask, BoundingBox } from '../types/app.types';
+import { Point, SavedMask, BoundingBox, TextureType } from '../types/app.types';
 import { predictMaskFromPrompt, generateMasksAutomatically } from '../services/api';
 
 export type MaskingMode = 'point' | 'box';
@@ -28,6 +28,7 @@ export interface UseMaskingReturn {
   // Mask list management
   handleToggleMaskActive: (id: string) => void;
   handleRenameMask: (id: string, newName: string) => void;
+  handleTextureTypeChange: (id: string, textureType: TextureType) => void;
   handleDeleteMask: (id: string) => void;
   // Reset/Clear actions
   handleResetCurrentPoints: () => void;
@@ -369,6 +370,7 @@ export function useMasking(): UseMaskingReturn {
         isActive: true,
         loadedImage: null, // Will be loaded by useEffect
         score: score,
+        textureType: 'checkerboard' // Set default texture type
       };
       setSavedMasks(prevMasks => [...prevMasks, newMask]);
 
@@ -413,6 +415,7 @@ export function useMasking(): UseMaskingReturn {
           isActive: true,
           loadedImage: null, // Will be loaded by useEffect
           score: maskData.score,
+          textureType: 'checkerboard' // Set default texture type
         }));
         setSavedMasks(newMasks); // Replace existing masks
         console.log(`Automatically generated and saved ${newMasks.length} masks.`);
@@ -442,6 +445,14 @@ export function useMasking(): UseMaskingReturn {
       )
     );
     console.log(`Renamed mask ${id} to ${newName}`);
+  }, []);
+
+  const handleTextureTypeChange = useCallback((id: string, textureType: TextureType) => {
+    setSavedMasks(prevMasks =>
+      prevMasks.map(mask =>
+        mask.id === id ? { ...mask, textureType } : mask
+      )
+    );
   }, []);
 
   const handleDeleteMask = useCallback((id: string) => {
@@ -514,6 +525,7 @@ export function useMasking(): UseMaskingReturn {
     // Mask list management
     handleToggleMaskActive,
     handleRenameMask,
+    handleTextureTypeChange,
     handleDeleteMask,
     // Reset/Clear actions
     handleResetCurrentPoints, // Clears points OR box selection

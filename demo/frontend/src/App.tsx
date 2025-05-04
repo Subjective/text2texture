@@ -259,6 +259,7 @@ function App() {
                 handleResetCurrentPoints={masking.handleResetCurrentPoints}
                 handleToggleMaskActive={masking.handleToggleMaskActive}
                 handleRenameMask={masking.handleRenameMask}
+                handleTextureTypeChange={masking.handleTextureTypeChange}
                 handleDeleteMask={masking.handleDeleteMask}
                 handleClearSavedMasks={masking.handleClearSavedMasks}
                 handleDownloadActiveMasks={masking.handleDownloadActiveMasks}

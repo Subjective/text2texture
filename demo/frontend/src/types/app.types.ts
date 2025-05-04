@@ -10,6 +10,9 @@ export type BoundingBox = [number, number, number, number];
 // Masking Interaction Mode
 export type MaskingMode = 'point' | 'box';
 
+// Texture type for masks
+export type TextureType = 'checkerboard' | 'vertical_stripes' | 'horizontal_stripes' | 'auto';
+
 // Structure for storing saved masks
 export type SavedMask = {
   id: string; // Unique identifier
@@ -19,6 +22,7 @@ export type SavedMask = {
   isActive: boolean; // Whether the mask should be displayed/used
   loadedImage: HTMLImageElement | null; // Loaded image element for drawing
   score?: number; // Optional score from backend
+  textureType: TextureType; // Type of texture to apply
 };
 
 // Type for masks received from the auto-generate endpoint

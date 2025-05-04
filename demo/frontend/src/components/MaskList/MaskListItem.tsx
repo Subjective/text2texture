@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { SavedMask } from '../../types/app.types'; // Import the type
+import { SavedMask, TextureType } from '../../types/app.types'; // Update import to include TextureType
 
 // Props for individual mask list items
 export interface MaskListItemProps {
@@ -9,9 +9,18 @@ export interface MaskListItemProps {
   onToggleActive: (id: string) => void;
   onDelete: (id: string) => void;
   onRename: (id: string, newName: string) => void; // Pass rename handler
+  onTextureTypeChange: (id: string, textureType: TextureType) => void; // Add texture type handler
 }
 
-export function MaskListItem({ mask, index, isLoading, onToggleActive, onDelete, onRename }: MaskListItemProps) {
+export function MaskListItem({ 
+  mask, 
+  index, 
+  isLoading, 
+  onToggleActive, 
+  onDelete, 
+  onRename,
+  onTextureTypeChange 
+}: MaskListItemProps) {
   // Local state to manage the input field value during editing
   const [editingName, setEditingName] = useState<string>(mask.name);
 
@@ -51,6 +60,10 @@ export function MaskListItem({ mask, index, isLoading, onToggleActive, onDelete,
     }
   };
 
+  // Handle texture type change
+  const handleTextureTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    onTextureTypeChange(mask.id, event.target.value as TextureType);
+  };
 
   return (
     <li className="flex items-center justify-between p-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700">
@@ -65,6 +78,21 @@ export function MaskListItem({ mask, index, isLoading, onToggleActive, onDelete,
         disabled={isLoading}
         aria-label={`Mask name for mask ${index + 1}`}
       />
+      
+      {/* Texture type dropdown */}
+      <select
+        value={mask.textureType}
+        onChange={handleTextureTypeChange}
+        className="text-xs bg-transparent border border-gray-300 dark:border-gray-500 rounded px-1 py-0.5 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-blue-500 mr-2"
+        disabled={isLoading}
+        aria-label={`Texture type for mask ${index + 1}`}
+      >
+        <option value="checkerboard">Checkerboard</option>
+        <option value="vertical_stripes">Vertical Stripes</option>
+        <option value="horizontal_stripes">Horizontal Stripes</option>
+        <option value="auto">Auto</option>
+      </select>
+      
       <span className="text-xs text-gray-500 dark:text-gray-400 mr-2 flex-shrink-0">
         (Score: {mask.score?.toFixed(2) ?? 'N/A'})
       </span>
