@@ -61,6 +61,18 @@ function App() {
         masking.imageRef.current = img;
         // Explicitly trigger redraw now that the image ref is set
         masking.drawCanvas();
+        
+        // Set block dimensions based on image aspect ratio
+        const aspectRatio = img.naturalWidth / img.naturalHeight;
+        if (aspectRatio >= 1) {
+          // Landscape or square: keep width at 100, adjust length
+          modelParams.setBlockWidth(100);
+          modelParams.setBlockLength(Math.round(100 / aspectRatio));
+        } else {
+          // Portrait: keep length at 100, adjust width
+          modelParams.setBlockWidth(Math.round(100 * aspectRatio));
+          modelParams.setBlockLength(100);
+        }
       };
       img.onerror = () => {
         console.error("Failed to load image into Image object for masking.");
@@ -76,7 +88,7 @@ function App() {
       masking.imageRef.current = null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imageInput.imageSrc, workflow.setError, workflow.currentStep]);
+  }, [imageInput.imageSrc, workflow.setError, workflow.currentStep, modelParams.setBlockWidth, modelParams.setBlockLength]);
 
   // Trigger canvas redraw when fullscreen is toggled and we have an image
   useEffect(() => {
@@ -155,8 +167,7 @@ function App() {
   const handleStartOver = useCallback(() => {
     imageInput.resetImageInputState();
     masking.handleClearSavedMasks(); // Resets masks and points
-    modelParams.setBlockWidth(100); // Reset params to defaults (example)
-    modelParams.setBlockLength(100);
+    // Don't reset blockWidth and blockLength here since they depend on image aspect ratio
     modelParams.setBlockThickness(10);
     modelParams.setDepth(25);
     modelParams.setBaseHeight(0);
