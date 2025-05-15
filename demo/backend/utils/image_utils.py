@@ -96,16 +96,43 @@ def generate_horizontal_stripe_heightmap(mask_region: np.ndarray, stripe_size: i
 
     return stripes
 
-def generate_heightmap_by_texture_type(mask_region: np.ndarray, texture_type: str = "checkerboard", feature_size: int = 8, height: float = 1.0) -> np.ndarray:
+def generate_auto_heightmap(mask_region: np.ndarray, image: Image.Image, feature_size: int = 8, height: float = 1.0) -> np.ndarray:
+    """
+    Placeholder for automatic heightmap generation using a trained model.
+    Converts the input PIL image to BGR NumPy array for model processing.
+
+    Args:
+        mask_region: A 2D boolean numpy array where True indicates the region for the texture.
+        image: The input PIL image to be used by the model.
+        feature_size: The size of the feature (used by fallback or potentially by the model).
+        height: The value to assign to the 'high' areas of the texture.
+
+    Returns:
+        A 2D numpy array of the same shape as mask_region, with the auto-generated texture.
+    """
+    logger.info("Attempting auto heightmap generation with provided PIL image.")
+    try:
+        # TODO: Implement model inference here using img_bgr_np
+        # For now, falling back to checkerboard.
+        logger.info("Auto heightmap generation (model inference) is not yet implemented. Falling back to checkerboard.")
+        return generate_checkerboard_heightmap(mask_region, feature_size, height) # Placeholder
+
+    except Exception as e:
+        logger.error(f"Error during image conversion or processing in generate_auto_heightmap: {e}", exc_info=True)
+        logger.warning("Falling back to checkerboard due to error in auto generation.")
+        return generate_checkerboard_heightmap(mask_region, feature_size, height)
+
+def generate_heightmap_by_texture_type(mask_region: np.ndarray, texture_type: str = "checkerboard", feature_size: int = 8, height: float = 1.0, image: Image.Image | None = None) -> np.ndarray:
     """
     Generates a heightmap with the specified texture pattern within the mask region.
 
     Args:
         mask_region: A 2D boolean numpy array where True indicates the region for the texture.
-        texture_type: The type of texture to generate ("checkerboard", "vertical_stripes", 
+        texture_type: The type of texture to generate ("checkerboard", "vertical_stripes",
                      "horizontal_stripes", or "auto").
         feature_size: The size of the feature (checker size or stripe width).
         height: The value to assign to the 'high' areas of the texture.
+        image: Optional. The input PIL image, required if texture_type is "auto".
 
     Returns:
         A 2D numpy array of the same shape as mask_region, with the specified texture pattern
@@ -118,8 +145,11 @@ def generate_heightmap_by_texture_type(mask_region: np.ndarray, texture_type: st
     elif texture_type == "horizontal_stripes":
         return generate_horizontal_stripe_heightmap(mask_region, feature_size, height)
     elif texture_type == "auto":
-        # TODO: For now, just use checkerboard for "auto"
-        return generate_checkerboard_heightmap(mask_region, feature_size, height)
+        if image is None:
+            logger.warning("PIL Image not provided for 'auto' texture type. Returning empty heightmap.")
+            return np.zeros_like(mask_region, dtype=np.float32) # Return empty heightmap
+        # Pass the PIL image directly to generate_auto_heightmap
+        return generate_auto_heightmap(mask_region, image, feature_size, height)
     else:
         # Default to checkerboard if an invalid type is specified
         logger.warning(f"Unknown texture type '{texture_type}'. Using checkerboard instead.")

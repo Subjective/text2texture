@@ -7,6 +7,7 @@ import shutil
 import json
 import cv2
 import numpy as np
+from PIL import Image
 
 from flask import Blueprint, jsonify, request
 
@@ -140,16 +141,35 @@ def api_generate_3d_model():
          return jsonify({"error": "Missing 'color_image' file in request"}), 400
 
     color_image_file = request.files["color_image"]
-    color_image_filename = f"color_{str(uuid.uuid4())}_{color_image_file.filename}"
+    # Sanitize filename (though uuid makes it unique, good practice for the original part)
+    # from werkzeug.utils import secure_filename
+    # original_filename = secure_filename(color_image_file.filename)
+    # color_image_filename = f"color_{str(uuid.uuid4())}_{original_filename}"
+    color_image_filename = f"color_{str(uuid.uuid4())}_{color_image_file.filename}" # Simpler for now
+
     color_image_path = os.path.join(config.UPLOAD_FOLDER, color_image_filename)
     files_to_remove.append(color_image_path)
+    pil_color_image = None # For storing the loaded PIL image
+
     try:
         color_image_file.save(color_image_path)
         logger.info(f"Saved uploaded color image to: {color_image_path}")
+        # Load the image into PIL after saving
+        pil_color_image = Image.open(color_image_path)
+        # pil_color_image.load() # Ensure it's fully loaded, usually not needed with open()
+        logger.info(f"Loaded color image into PIL Image object.")
+    except FileNotFoundError:
+        logger.error(f"Failed to find saved image at {color_image_path} for PIL loading.", exc_info=True)
+        return jsonify({"error": "Failed to process uploaded image after saving."}), 500
     except Exception as e:
-        logger.error(f"Error saving uploaded color_image file: {str(e)}", exc_info=True)
+        logger.error(f"Error saving or loading uploaded color_image file: {str(e)}", exc_info=True)
         # TODO: Cleanup already saved files before returning
-        return jsonify({"error": f"Could not save uploaded file: {str(e)}"}), 500
+        return jsonify({"error": f"Could not save or load uploaded file: {str(e)}"}), 500
+    
+    if pil_color_image is None: # Should be caught by exceptions above, but as a safeguard
+        logger.error("PIL color image was not loaded despite no explicit exception.")
+        return jsonify({"error": "Failed to load color image for processing."}), 500
+
 
     # --- 2) Handle Input Masks (Optional) ---
     for key in request.files:
@@ -188,20 +208,24 @@ def api_generate_3d_model():
     heightmap_path = os.path.join(config.UPLOAD_FOLDER, unique_base_heightmap_filename)
     files_to_remove.append(heightmap_path)
 
-    logger.info(f"Generating base heightmap for {color_image_path} -> {heightmap_path}")
+    logger.info(f"Generating base heightmap using PIL image -> {heightmap_path}")
     try:
-        # Use imported function
-        get_grayscale_depth(color_image_path, heightmap_path)
-        logger.info(f"Successfully generated base heightmap: {heightmap_path}")
-        base_heightmap_np = cv2.imread(heightmap_path, cv2.IMREAD_GRAYSCALE)
-        if base_heightmap_np is None:
-            raise ValueError(f"Failed to load generated base heightmap from {heightmap_path}")
-        base_heightmap_np = base_heightmap_np.astype(np.float32)
+        # Use imported function with the PIL image
+        base_heightmap_np_from_depth_func = get_grayscale_depth(pil_color_image) # Returns NumPy array
+        
+        # Save the returned NumPy array as an image
+        Image.fromarray(base_heightmap_np_from_depth_func).save(heightmap_path)
+        logger.info(f"Successfully generated and saved base heightmap: {heightmap_path}")
+
+        # The returned array is already the processed depth map (inverted, grayscale, uint8)
+        # For consistency with subsequent processing that uses cv2.imread and float32:
+        base_heightmap_np = base_heightmap_np_from_depth_func.astype(np.float32) 
+
         final_heightmap_np = base_heightmap_np.copy()
-        logger.info(f"Base heightmap loaded, shape: {base_heightmap_np.shape}")
+        logger.info(f"Base heightmap processed, shape: {base_heightmap_np.shape}, type: {base_heightmap_np.dtype}")
 
     except Exception as e:
-        logger.error(f"Error generating or loading base heightmap for {color_image_path}: {str(e)}", exc_info=True)
+        logger.error(f"Error generating or saving base heightmap from PIL image: {str(e)}", exc_info=True)
         # TODO: Clean up uploaded files
         return jsonify({"error": f"Error generating base heightmap: {str(e)}"}), 500
 
@@ -237,6 +261,15 @@ def api_generate_3d_model():
                         texture_type = meta.get("textureType", "checkerboard")
                         break
                 
+                image_param_for_texture_type = None
+                if texture_type == "auto":
+                    if pil_color_image: # We have the PIL image loaded already
+                        image_param_for_texture_type = pil_color_image # Pass the PIL image
+                        logger.info("Passing PIL color image for 'auto' texture type to utility function.")
+                    else:
+                        # This case should ideally not be reached if pil_color_image is always loaded upstream
+                        logger.warning("PIL color image not available when 'auto' texture type was specified. Proceeding without image.")
+
                 logger.info(f"Using texture type '{texture_type}' for mask {mask_key}")
                 
                 # Use the new function to generate the heightmap based on texture type
@@ -244,7 +277,8 @@ def api_generate_3d_model():
                     current_mask_bool,
                     texture_type=texture_type,
                     feature_size=feature_size,
-                    height=1.0
+                    height=1.0,
+                    image=image_param_for_texture_type
                 )
                 
                 final_heightmap_np[current_mask_bool] += detail_scale * texture_detail_np[current_mask_bool]
