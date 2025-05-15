@@ -231,6 +231,7 @@ function App() {
               isLoading={workflow.isLoading}
               isLoadingImageGen={imageInput.isLoadingImageGen}
               uploadedImageFilename={imageInput.uploadedImageFilename}
+              lastPromptForPlaceholder={imageInput.lastSuccessfulTextPrompt}
               onInputMethodChange={handleInputMethodChange}
               onTextPromptChange={(e) => imageInput.setTextPrompt(e.target.value)}
               onFileChange={handleFileSelected} // Use the new async handler

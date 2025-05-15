@@ -12,6 +12,7 @@ export interface UseImageInputReturn {
   uploadedImageFilename: string | null;
   isLoadingImageGen: boolean; // Loading state specific to text-to-image
   imageError: string | null; // Error state specific to this hook
+  lastSuccessfulTextPrompt: string | null;
   setInputMethod: React.Dispatch<React.SetStateAction<InputMethod>>;
   setTextPrompt: React.Dispatch<React.SetStateAction<string>>;
   handleFileChange: (event: React.ChangeEvent<HTMLInputElement>) => Promise<boolean>; // Return promise indicating success
@@ -28,6 +29,7 @@ export function useImageInput(): UseImageInputReturn {
   const [uploadedImageFilename, setUploadedImageFilename] = useState<string | null>(null);
   const [isLoadingImageGen, setIsLoadingImageGen] = useState<boolean>(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [lastSuccessfulTextPrompt, setLastSuccessfulTextPrompt] = useState<string | null>(null);
 
   const clearImageError = useCallback(() => {
     setImageError(null);
@@ -43,7 +45,7 @@ export function useImageInput(): UseImageInputReturn {
     setUploadedImageFilename(null);
     setIsLoadingImageGen(false);
     setImageError(null);
-    // Reset file input visually if needed (might need DOM access, handle in component)
+    // Note: lastSuccessfulTextPrompt is intentionally not reset here
     // const fileInput = document.getElementById('imageUpload') as HTMLInputElement;
     // if (fileInput) fileInput.value = "";
   }, []);
@@ -120,6 +122,7 @@ export function useImageInput(): UseImageInputReturn {
       setImageFile(generatedFile);
       setUploadedImageFilename(generatedFilename);
       setIsLoadingImageGen(false);
+      setLastSuccessfulTextPrompt(textPrompt);
       return { success: true, imageSrc: fullImageSrc, imageFile: generatedFile, filename: generatedFilename };
 
     } catch (err: any) {
@@ -139,6 +142,7 @@ export function useImageInput(): UseImageInputReturn {
     uploadedImageFilename,
     isLoadingImageGen,
     imageError,
+    lastSuccessfulTextPrompt,
     setInputMethod,
     setTextPrompt,
     handleFileChange,

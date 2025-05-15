@@ -7,6 +7,7 @@ interface InputSectionProps {
   isLoading: boolean; // Combined loading state from workflow
   isLoadingImageGen: boolean; // Specific loading state for text-to-image
   uploadedImageFilename: string | null; // Filename from state
+  lastPromptForPlaceholder?: string | null; // Last prompt for placeholder
   onInputMethodChange: (method: InputMethod) => void;
   onTextPromptChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -19,6 +20,7 @@ export function InputSection({
   isLoading,
   isLoadingImageGen,
   uploadedImageFilename,
+  lastPromptForPlaceholder,
   onInputMethodChange,
   onTextPromptChange,
   onFileChange,
@@ -106,7 +108,7 @@ export function InputSection({
             rows={3}
             value={textPrompt}
             onChange={onTextPromptChange}
-            placeholder="e.g., Cows on mars, with asteroids in the background"
+            placeholder={lastPromptForPlaceholder || "e.g., Cows on mars, with asteroids in the background"}
             className="block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white disabled:opacity-50"
             disabled={isLoading}
           />
