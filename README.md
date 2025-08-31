@@ -1,12 +1,18 @@
 # Text2Texture
 
-Text2Texture is a tool that allows you to generate 3D textures and models from text prompts. By combining AI-powered image generation, segmentation, and depth estimation, this project provides an end-to-end pipeline for creating detailed 3D assets from simple text descriptions.
+Text2Texture is a tool that allows you to generate 3D textures and models from text prompts or images.
+
+📄 [**UIST 2025 Submission**](https://www.joshyin.cc/static/documents/text2texture-generating-3d-printed-models-with-textures.pdf)
+
+![Text2Texture UI](docs/images/text2texture-ui.png)
 
 ## Features
 
-- **Text-to-Image Generation**: Generate images from text prompts using OpenAI's DALL-E 3
-- **Automatic Segmentation**: Identify and segment objects in generated images using Florence-2 and SAM-HQ
-- **3D Model Generation**: Create 3D models with proper depth using ZoeDepth
+- **Text-to-Image Generation**: Generate images from text prompts using OpenAI's DALL-E 3 or upload existing images
+- **Depth Extraction**: Extract depth information from 2D images using ZoeDepth monocular estimator
+- **Texture Synthesis**: Extract local texture heightmaps using a fine-tuned stable diffusion model
+- **Composite 3D Model Generation**: Superimpose macro- and micro-scale geometries to produce textured 3D models with color, depth and texture ready for 3D printing
+- **Automatic Segmentation**: Identify and segment objects in images using Florence-2 and SAM-HQ
 - **Interactive Demo**: User-friendly web interface for creating, manipulating, and exporting 3D assets
 
 ## Repository Structure
@@ -41,12 +47,14 @@ text2texture/
 ### Setup
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/Subjective/text2texture.git
    cd text2texture
    ```
 
 2. Download the required model checkpoints:
+
    ```bash
    bash scripts/download_checkpoints.sh
    ```
@@ -54,6 +62,7 @@ text2texture/
 3. Set up the demo:
 
    #### Option 1: Using Docker (recommended for deployment)
+
    ```bash
    cd demo
    # Create a .env file in demo/backend with your OpenAI API key
@@ -67,6 +76,7 @@ text2texture/
    #### Option 2: Manual Setup (recommended for development)
 
    **Backend**:
+
    ```bash
    cd demo/backend
    # Create and activate a virtual environment
@@ -81,6 +91,7 @@ text2texture/
    ```
 
    **Frontend**:
+
    ```bash
    cd demo/frontend
    npm install
@@ -110,27 +121,7 @@ This project uses several state-of-the-art AI models:
 
 ## License
 
-MIT License
-
-Copyright (c) 2023 Text2Texture Contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+This project is licensed under the [MIT License](LICENSE).
 
 ## Acknowledgments
 
